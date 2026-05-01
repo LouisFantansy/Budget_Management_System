@@ -84,6 +84,8 @@ export const useWorkbenchStore = defineStore('workbench', {
     },
     masterData: {
       categories: [] as ApiCategory[],
+      'project-categories': [] as ApiNamedMasterData[],
+      'product-lines': [] as ApiNamedMasterData[],
       projects: [] as ApiProject[],
       vendors: [] as ApiNamedMasterData[],
       regions: [] as ApiNamedMasterData[],
@@ -518,13 +520,17 @@ export const useWorkbenchStore = defineStore('workbench', {
       this.loading = true
       this.error = ''
       try {
-        const [categories, projects, vendors, regions] = await Promise.all([
+        const [categories, projectCategories, productLines, projects, vendors, regions] = await Promise.all([
           apiGet<PaginatedResponse<ApiCategory>>('/categories/'),
+          apiGet<PaginatedResponse<ApiNamedMasterData>>('/project-categories/'),
+          apiGet<PaginatedResponse<ApiNamedMasterData>>('/product-lines/'),
           apiGet<PaginatedResponse<ApiProject>>('/projects/'),
           apiGet<PaginatedResponse<ApiNamedMasterData>>('/vendors/'),
           apiGet<PaginatedResponse<ApiNamedMasterData>>('/regions/'),
         ])
         this.masterData.categories = categories.results
+        this.masterData['project-categories'] = projectCategories.results
+        this.masterData['product-lines'] = productLines.results
         this.masterData.projects = projects.results
         this.masterData.vendors = vendors.results
         this.masterData.regions = regions.results

@@ -8,6 +8,8 @@ const store = useWorkbenchStore()
 
 const tabs: Array<{ key: MasterDataKind; label: string }> = [
   { key: 'categories', label: 'Category' },
+  { key: 'project-categories', label: 'Project Category' },
+  { key: 'product-lines', label: 'Product Line' },
   { key: 'projects', label: 'Project' },
   { key: 'vendors', label: 'Vendor' },
   { key: 'regions', label: 'Region' },

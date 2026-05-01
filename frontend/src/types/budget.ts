@@ -197,7 +197,13 @@ export interface ApiProject extends ApiNamedMasterData {
   product_line: string | null
 }
 
-export type MasterDataKind = 'categories' | 'projects' | 'vendors' | 'regions'
+export type MasterDataKind =
+  | 'categories'
+  | 'project-categories'
+  | 'product-lines'
+  | 'projects'
+  | 'vendors'
+  | 'regions'
 
 export interface ApiPurchaseHistory {
   id: string
