@@ -16,8 +16,8 @@ onMounted(() => {
       <p class="eyebrow">{{ store.cycleName }}</p>
       <h1>预算工作台</h1>
     </div>
-    <button class="primary-button" type="button" :disabled="store.loading" @click="store.load">
-      {{ store.loading ? '同步中' : '同步更新' }}
+    <button class="primary-button" type="button" :disabled="store.loading || store.actionLoading" @click="store.pullPrimaryConsolidated('opex')">
+      {{ store.actionLoading ? '拉取中' : '拉取一级总表' }}
       <RefreshCw :size="17" />
     </button>
   </section>

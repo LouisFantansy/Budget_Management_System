@@ -308,6 +308,24 @@ export const useWorkbenchStore = defineStore('workbench', {
         this.actionLoading = false
       }
     },
+    async pullPrimaryConsolidated(expenseType: 'opex' | 'capex' = 'opex') {
+      this.actionLoading = true
+      this.error = ''
+      try {
+        const cycle = await apiGet<PaginatedResponse<{ id: string; name: string }>>('/cycles/')
+        const activeCycle = cycle.results[0]
+        if (!activeCycle) {
+          this.error = '当前没有预算周期'
+          return
+        }
+        await apiPost(`/cycles/${activeCycle.id}/pull-primary-consolidated/`, { expense_type: expenseType })
+        await this.load()
+      } catch (error) {
+        this.error = error instanceof Error ? error.message : '拉取一级总表失败'
+      } finally {
+        this.actionLoading = false
+      }
+    },
     async loadVersionDiff() {
       this.loading = true
       this.error = ''
