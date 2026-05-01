@@ -63,3 +63,36 @@ class TemplateFieldAPITests(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertTrue(TemplateField.objects.filter(template=self.template, code='purchase_reason').exists())
+
+    def test_primary_budget_admin_can_update_template_field(self):
+        field = TemplateField.objects.create(
+            template=self.template,
+            code='purchase_reason',
+            label='采购原因',
+            data_type=TemplateField.DataType.TEXT,
+            required=False,
+        )
+
+        response = self.client.patch(
+            reverse('templatefield-detail', args=[field.id]),
+            {'label': '采购必要性', 'required': True},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        field.refresh_from_db()
+        self.assertEqual(field.label, '采购必要性')
+        self.assertTrue(field.required)
+
+    def test_primary_budget_admin_can_delete_template_field(self):
+        field = TemplateField.objects.create(
+            template=self.template,
+            code='temporary_note',
+            label='临时说明',
+            data_type=TemplateField.DataType.TEXT,
+        )
+
+        response = self.client.delete(reverse('templatefield-detail', args=[field.id]))
+
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(TemplateField.objects.filter(id=field.id).exists())

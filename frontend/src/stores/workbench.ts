@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { apiGet, apiPatch, apiPost, type PaginatedResponse } from '../api/client'
+import { apiDelete, apiGet, apiPatch, apiPost, type PaginatedResponse } from '../api/client'
 import type {
   ApiApprovalRequest,
   ApiBudgetBook,
@@ -332,6 +332,30 @@ export const useWorkbenchStore = defineStore('workbench', {
         await this.loadTemplateFields()
       } catch (error) {
         this.error = error instanceof Error ? error.message : '新增模板字段失败'
+      } finally {
+        this.actionLoading = false
+      }
+    },
+    async updateTemplateField(field: ApiTemplateField, patch: Partial<Pick<ApiTemplateField, 'label' | 'required'>>) {
+      this.actionLoading = true
+      this.error = ''
+      try {
+        await apiPatch(`/template-fields/${field.id}/`, patch)
+        await this.loadTemplateFields()
+      } catch (error) {
+        this.error = error instanceof Error ? error.message : '更新模板字段失败'
+      } finally {
+        this.actionLoading = false
+      }
+    },
+    async deleteTemplateField(field: ApiTemplateField) {
+      this.actionLoading = true
+      this.error = ''
+      try {
+        await apiDelete(`/template-fields/${field.id}/`)
+        await this.loadTemplateFields()
+      } catch (error) {
+        this.error = error instanceof Error ? error.message : '删除模板字段失败'
       } finally {
         this.actionLoading = false
       }

@@ -42,6 +42,16 @@ export async function apiPatch<T>(path: string, body: unknown): Promise<T> {
   return response.json() as Promise<T>
 }
 
+export async function apiDelete(path: string): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    method: 'DELETE',
+    headers: authHeaders(),
+  })
+  if (!response.ok) {
+    throw await apiError(response)
+  }
+}
+
 export function setBasicAuth(username: string, password: string) {
   window.localStorage.setItem(BASIC_AUTH_STORAGE_KEY, window.btoa(`${username}:${password}`))
 }

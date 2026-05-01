@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onMounted } from 'vue'
-import { Copy, Eye, FunctionSquare, ListChecks, Plus } from 'lucide-vue-next'
+import { Copy, Eye, FunctionSquare, ListChecks, Plus, Trash2 } from 'lucide-vue-next'
 import { useWorkbenchStore } from '../stores/workbench'
 
 const store = useWorkbenchStore()
@@ -8,6 +8,25 @@ const store = useWorkbenchStore()
 onMounted(() => {
   store.loadTemplates()
 })
+
+function renameField(field: (typeof store.templateFields)[number], event: Event) {
+  const target = event.target as HTMLInputElement
+  const label = target.value.trim()
+  if (label && label !== field.label) {
+    store.updateTemplateField(field, { label })
+  }
+}
+
+function toggleRequired(field: (typeof store.templateFields)[number], event: Event) {
+  const target = event.target as HTMLInputElement
+  store.updateTemplateField(field, { required: target.checked })
+}
+
+function deleteField(field: (typeof store.templateFields)[number]) {
+  if (window.confirm(`确认删除字段「${field.label}」？`)) {
+    store.deleteTemplateField(field)
+  }
+}
 </script>
 
 <template>
@@ -52,8 +71,15 @@ onMounted(() => {
         </div>
         <div v-for="field in store.templateFields" :key="field.id">
           <ListChecks :size="16" />
-          <span>{{ field.label }}</span>
+          <input class="field-label-input" :value="field.label" :disabled="store.actionLoading" @change="renameField(field, $event)" />
           <em>{{ field.code }} · {{ field.data_type }} · {{ field.required ? '必填' : '选填' }}</em>
+          <label class="field-required-toggle">
+            <input :checked="field.required" type="checkbox" :disabled="store.actionLoading" @change="toggleRequired(field, $event)" />
+            必填
+          </label>
+          <button class="icon-button danger-icon" type="button" :disabled="store.actionLoading" @click="deleteField(field)">
+            <Trash2 :size="15" />
+          </button>
         </div>
       </div>
     </article>

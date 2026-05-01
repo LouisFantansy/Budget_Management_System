@@ -66,7 +66,7 @@ localStorage.setItem('budget_basic_auth', btoa('primary-admin:password'))
 - 预算编制：预算行、动态模板字段、提交送审、创建修订。
 - 审批中心：通过和退回。
 - 预算看板：部门、Category、月度聚合。
-- 模板管理：字段查看与新增。
+- 模板管理：字段查看、新增、重命名、必填切换和删除。
 - 版本分析：版本链路和 Diff。
 
 ## Testing Guide
@@ -88,7 +88,7 @@ npm run build
 
 ### 当前测试基线
 
-- 后端测试数：31
+- 后端测试数：33
 - 前端构建：通过
 
 ## Demo Data
@@ -105,4 +105,3 @@ cd backend
 - `primary-admin / password`
 - `budget-owner / password`
 - `dept-head / password`
-
