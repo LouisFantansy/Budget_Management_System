@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted } from 'vue'
-import { BarChart3, PieChart, TrendingUp } from 'lucide-vue-next'
+import { BarChart3, BookmarkPlus, PieChart, TrendingUp } from 'lucide-vue-next'
 import { useWorkbenchStore } from '../stores/workbench'
 
 const store = useWorkbenchStore()
@@ -28,8 +28,12 @@ function barHeight(value: string | number) {
   return `${Math.max(8, (Number(value) / maxMonthlyAmount.value) * 100)}%`
 }
 
+const departmentOptions = computed(() =>
+  store.departments.filter((item) => item.level === 'primary' || item.level === 'secondary' || item.level === 'ss_public'),
+)
+
 onMounted(() => {
-  store.loadBudgetOverview()
+  Promise.all([store.loadDashboardConfigs(), store.loadBudgetOverview()])
 })
 </script>
 
@@ -58,10 +62,71 @@ onMounted(() => {
       >
         Current Draft
       </button>
+      <select v-model="store.dashboardFocusDepartmentId" class="dashboard-filter" :disabled="store.loading" @change="store.loadBudgetOverview(store.versionContext)">
+        <option value="">全部可见部门</option>
+        <option v-for="department in departmentOptions" :key="department.id" :value="department.id">{{ department.name }}</option>
+      </select>
     </div>
   </section>
 
   <p v-if="store.error" class="error-banner">{{ store.error }}</p>
+
+  <section class="content-grid">
+    <article class="panel">
+      <div class="panel-title">
+        <div>
+          <p class="eyebrow">Saved Views</p>
+          <h2>看板配置</h2>
+        </div>
+        <BookmarkPlus :size="18" />
+      </div>
+      <div class="approval-stack">
+        <button
+          v-for="config in store.dashboardConfigs"
+          :key="config.id"
+          class="dashboard-config-card"
+          type="button"
+          :class="{ active: store.activeDashboardConfigId === config.id }"
+          :disabled="store.loading"
+          @click="store.applyDashboardConfig(config.id)"
+        >
+          <strong>{{ config.name }}</strong>
+          <span>{{ config.scope }} · {{ config.version_context === 'current_draft' ? 'Draft' : 'Approved' }}</span>
+          <p>{{ config.department_name || '个人视图' }}<template v-if="config.is_default"> · 默认</template></p>
+        </button>
+        <p v-if="!store.dashboardConfigs.length" class="empty-note">当前还没有保存的看板配置。</p>
+      </div>
+    </article>
+
+    <article class="panel">
+      <div class="panel-title">
+        <div>
+          <p class="eyebrow">Save Current View</p>
+          <h2>保存当前看板</h2>
+        </div>
+        <BookmarkPlus :size="18" />
+      </div>
+      <div class="field-form dashboard-config-form">
+        <input v-model="store.dashboardConfigDraft.name" placeholder="配置名称，如 SS Draft 总览" />
+        <select v-model="store.dashboardConfigDraft.scope">
+          <option value="personal">个人</option>
+          <option value="department">部门共享</option>
+          <option value="global">全局共享</option>
+        </select>
+        <select v-if="store.dashboardConfigDraft.scope === 'department'" v-model="store.dashboardConfigDraft.departmentId">
+          <option value="">选择共享部门</option>
+          <option v-for="department in departmentOptions" :key="department.id" :value="department.id">{{ department.name }}</option>
+        </select>
+        <label class="field-required-toggle">
+          <input v-model="store.dashboardConfigDraft.isDefault" type="checkbox" />
+          设为默认视图
+        </label>
+        <button class="primary-button" type="button" :disabled="store.actionLoading" @click="store.saveDashboardConfig">
+          保存配置
+        </button>
+      </div>
+    </article>
+  </section>
 
   <section class="dashboard-grid">
     <article class="panel chart-panel">

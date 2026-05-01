@@ -3,6 +3,9 @@ import { apiDelete, apiGet, apiPatch, apiPost, type PaginatedResponse } from '..
 import type {
   ApiApprovalRequest,
   ApiBudgetBook,
+  ApiDashboardApplyResponse,
+  ApiDashboardConfig,
+  ApiDepartment,
   ApiBudgetLine,
   ApiBudgetOverview,
   ApiBudgetTemplate,
@@ -17,6 +20,7 @@ import type {
   ApprovalItem,
   BudgetLinePreview,
   BudgetTask,
+  DashboardScope,
   MasterDataKind,
   SummaryStat,
   VersionContext,
@@ -59,6 +63,7 @@ export const useWorkbenchStore = defineStore('workbench', {
     actionLoading: false,
     error: '',
     currentUser: null as ApiUser | null,
+    departments: [] as ApiDepartment[],
     loginForm: {
       username: 'primary-admin',
       password: 'password',
@@ -69,6 +74,15 @@ export const useWorkbenchStore = defineStore('workbench', {
     revisionSourceBookId: '',
     versionDiff: null as ApiVersionDiff | null,
     budgetOverview: null as ApiBudgetOverview | null,
+    dashboardConfigs: [] as ApiDashboardConfig[],
+    activeDashboardConfigId: '',
+    dashboardFocusDepartmentId: '',
+    dashboardConfigDraft: {
+      name: '',
+      scope: 'personal' as DashboardScope,
+      departmentId: '',
+      isDefault: true,
+    },
     templateFields: [] as ApiTemplateField[],
     templates: [] as ApiBudgetTemplate[],
     templateFieldDraft: {
@@ -81,6 +95,8 @@ export const useWorkbenchStore = defineStore('workbench', {
     masterDataDraft: {
       code: '',
       name: '',
+      projectCategoryId: '',
+      productLineId: '',
     },
     masterData: {
       categories: [] as ApiCategory[],
@@ -117,18 +133,26 @@ export const useWorkbenchStore = defineStore('workbench', {
     ] as BudgetLinePreview[],
   }),
   actions: {
+    async loadDepartments() {
+      const response = await apiGet<PaginatedResponse<ApiDepartment>>('/departments/')
+      this.departments = response.results
+      response.results.forEach((item) => {
+        departmentNames[item.id] = item.name
+      })
+    },
     async load() {
       this.loading = true
       this.error = ''
       try {
         const [departments, categories, projects, books, approvals] = await Promise.all([
-          apiGet<PaginatedResponse<{ id: string; name: string }>>('/departments/'),
+          apiGet<PaginatedResponse<ApiDepartment>>('/departments/'),
           apiGet<PaginatedResponse<{ id: string; name: string }>>('/categories/'),
           apiGet<PaginatedResponse<{ id: string; name: string }>>('/projects/'),
           apiGet<PaginatedResponse<ApiBudgetBook>>('/budget-books/'),
           apiGet<PaginatedResponse<ApiApprovalRequest>>('/approval-requests/'),
         ])
 
+        this.departments = departments.results
         departments.results.forEach((item) => {
           departmentNames[item.id] = item.name
         })
@@ -355,10 +379,76 @@ export const useWorkbenchStore = defineStore('workbench', {
       this.loading = true
       this.error = ''
       try {
+        if (!this.departments.length) {
+          await this.loadDepartments()
+        }
         this.versionContext = context
-        this.budgetOverview = await apiGet<ApiBudgetOverview>(`/dashboard-configs/budget-overview/?version_context=${context}`)
+        const query = new URLSearchParams({ version_context: context })
+        if (this.dashboardFocusDepartmentId) {
+          query.set('focus_department_id', this.dashboardFocusDepartmentId)
+        }
+        this.budgetOverview = await apiGet<ApiBudgetOverview>(`/dashboard-configs/budget-overview/?${query.toString()}`)
       } catch (error) {
         this.error = error instanceof Error ? error.message : '加载预算看板失败'
+      } finally {
+        this.loading = false
+      }
+    },
+    async loadDashboardConfigs() {
+      this.loading = true
+      this.error = ''
+      try {
+        if (!this.departments.length) {
+          await this.loadDepartments()
+        }
+        const response = await apiGet<PaginatedResponse<ApiDashboardConfig>>('/dashboard-configs/')
+        this.dashboardConfigs = response.results
+        const defaultConfig = response.results.find((item) => item.is_default)
+        if (defaultConfig) {
+          this.activeDashboardConfigId = defaultConfig.id
+        }
+      } catch (error) {
+        this.error = error instanceof Error ? error.message : '加载看板配置失败'
+      } finally {
+        this.loading = false
+      }
+    },
+    async saveDashboardConfig() {
+      const name = this.dashboardConfigDraft.name.trim()
+      if (!name) {
+        this.error = '看板配置名称必填'
+        return
+      }
+      this.actionLoading = true
+      this.error = ''
+      try {
+        await apiPost<ApiDashboardConfig>('/dashboard-configs/', {
+          name,
+          scope: this.dashboardConfigDraft.scope,
+          department: this.dashboardConfigDraft.scope === 'department' ? this.dashboardConfigDraft.departmentId || null : null,
+          version_context: this.versionContext === 'current_draft' ? 'current_draft' : 'latest_approved',
+          config: { focus_department_id: this.dashboardFocusDepartmentId || null },
+          is_default: this.dashboardConfigDraft.isDefault,
+        })
+        this.dashboardConfigDraft = { name: '', scope: 'personal', departmentId: '', isDefault: true }
+        await this.loadDashboardConfigs()
+      } catch (error) {
+        this.error = error instanceof Error ? error.message : '保存看板配置失败'
+      } finally {
+        this.actionLoading = false
+      }
+    },
+    async applyDashboardConfig(configId: string) {
+      this.loading = true
+      this.error = ''
+      try {
+        const response = await apiGet<ApiDashboardApplyResponse>(`/dashboard-configs/${configId}/apply/`)
+        this.activeDashboardConfigId = response.config.id
+        this.versionContext = response.config.version_context
+        this.dashboardFocusDepartmentId = response.config.config.focus_department_id ?? ''
+        this.budgetOverview = response.overview
+      } catch (error) {
+        this.error = error instanceof Error ? error.message : '应用看板配置失败'
       } finally {
         this.loading = false
       }
@@ -553,11 +643,13 @@ export const useWorkbenchStore = defineStore('workbench', {
         await apiPost(`/${this.masterDataKind}/`, {
           code,
           name,
+          project_category: this.masterDataKind === 'projects' ? this.masterDataDraft.projectCategoryId || null : undefined,
+          product_line: this.masterDataKind === 'projects' ? this.masterDataDraft.productLineId || null : undefined,
           level: this.masterDataKind === 'categories' ? 'category' : undefined,
           is_active: true,
           sort_order: 0,
         })
-        this.masterDataDraft = { code: '', name: '' }
+        this.masterDataDraft = { code: '', name: '', projectCategoryId: '', productLineId: '' }
         await this.loadMasterData()
       } catch (error) {
         this.error = error instanceof Error ? error.message : '新增主数据失败'

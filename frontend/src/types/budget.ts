@@ -1,4 +1,6 @@
 export type VersionContext = 'latest_approved' | 'current_draft' | 'submitted_version'
+export type DashboardVersionContext = 'latest_approved' | 'current_draft'
+export type DashboardScope = 'personal' | 'department' | 'global'
 
 export interface SummaryStat {
   label: string
@@ -148,7 +150,7 @@ export interface ApiVersionDiff {
 }
 
 export interface ApiBudgetOverview {
-  version_context: VersionContext
+  version_context: DashboardVersionContext
   line_count: number
   total_amount: string
   by_department: Array<{
@@ -177,6 +179,14 @@ export interface ApiUser {
   employee_id: string
   email: string
   primary_department: string | null
+}
+
+export interface ApiDepartment {
+  id: string
+  name: string
+  code: string
+  level: 'primary' | 'secondary' | 'section' | 'ss_public'
+  parent: string | null
 }
 
 export interface ApiNamedMasterData {
@@ -211,4 +221,24 @@ export interface ApiPurchaseHistory {
   deal_price: string
   recommended_price: string
   source: string
+}
+
+export interface ApiDashboardConfig {
+  id: string
+  name: string
+  owner: number
+  owner_name: string
+  scope: DashboardScope
+  department: string | null
+  department_name: string | null
+  version_context: DashboardVersionContext
+  config: {
+    focus_department_id?: string | null
+  }
+  is_default: boolean
+}
+
+export interface ApiDashboardApplyResponse {
+  config: ApiDashboardConfig
+  overview: ApiBudgetOverview
 }

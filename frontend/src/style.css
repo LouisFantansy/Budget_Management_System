@@ -614,6 +614,50 @@ h2 {
   min-height: 320px;
 }
 
+.dashboard-filter {
+  height: 38px;
+  min-width: 168px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0 10px;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.82);
+}
+
+.dashboard-config-form {
+  grid-template-columns: minmax(220px, 1.3fr) 140px minmax(180px, 1fr) 130px auto;
+  align-items: center;
+}
+
+.dashboard-config-card {
+  min-height: 96px;
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 14px;
+  color: var(--text);
+  text-align: left;
+  background: rgba(255, 255, 255, 0.74);
+  display: grid;
+  gap: 8px;
+}
+
+.dashboard-config-card.active {
+  border-color: rgba(10, 132, 255, 0.48);
+  background: rgba(10, 132, 255, 0.08);
+}
+
+.dashboard-config-card span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.dashboard-config-card p {
+  color: var(--blue);
+  font-size: 13px;
+  font-weight: 650;
+}
+
 .bar-chart {
   height: 210px;
   display: grid;
@@ -672,8 +716,25 @@ h2 {
   margin-bottom: 14px;
 }
 
+.masterdata-form select {
+  height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 0 9px;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.84);
+}
+
+.masterdata-form-project {
+  grid-template-columns: minmax(180px, 1fr) minmax(180px, 1fr) minmax(180px, 1fr) minmax(180px, 1fr);
+}
+
 .masterdata-row {
   grid-template-columns: 160px minmax(220px, 1fr) 110px 90px 60px;
+}
+
+.masterdata-row-project {
+  grid-template-columns: 160px minmax(220px, 1fr) 140px 140px 110px 90px 60px;
 }
 
 .masterdata-input {
