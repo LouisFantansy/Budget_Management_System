@@ -503,6 +503,34 @@ export const useWorkbenchStore = defineStore('workbench', {
         this.actionLoading = false
       }
     },
+    async updateMasterData(
+      kind: MasterDataKind,
+      itemId: string,
+      patch: Record<string, unknown>,
+    ) {
+      this.actionLoading = true
+      this.error = ''
+      try {
+        await apiPatch(`/${kind}/${itemId}/`, patch)
+        await this.loadMasterData()
+      } catch (error) {
+        this.error = error instanceof Error ? error.message : '更新主数据失败'
+      } finally {
+        this.actionLoading = false
+      }
+    },
+    async deleteMasterData(kind: MasterDataKind, itemId: string) {
+      this.actionLoading = true
+      this.error = ''
+      try {
+        await apiDelete(`/${kind}/${itemId}/`)
+        await this.loadMasterData()
+      } catch (error) {
+        this.error = error instanceof Error ? error.message : '删除主数据失败'
+      } finally {
+        this.actionLoading = false
+      }
+    },
   },
 })
 

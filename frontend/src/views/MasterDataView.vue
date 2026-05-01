@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted } from 'vue'
-import { Database, Plus } from 'lucide-vue-next'
+import { Database, Plus, Trash2 } from 'lucide-vue-next'
 import { useWorkbenchStore } from '../stores/workbench'
 import type { MasterDataKind } from '../types/budget'
 
@@ -14,6 +14,27 @@ const tabs: Array<{ key: MasterDataKind; label: string }> = [
 ]
 
 const currentItems = computed(() => store.masterData[store.masterDataKind])
+
+function updateName(itemId: string, event: Event) {
+  const target = event.target as HTMLInputElement
+  store.updateMasterData(store.masterDataKind, itemId, { name: target.value.trim() })
+}
+
+function updateSortOrder(itemId: string, event: Event) {
+  const target = event.target as HTMLInputElement
+  store.updateMasterData(store.masterDataKind, itemId, { sort_order: Number(target.value || 0) })
+}
+
+function toggleActive(itemId: string, event: Event) {
+  const target = event.target as HTMLInputElement
+  store.updateMasterData(store.masterDataKind, itemId, { is_active: target.checked })
+}
+
+function removeItem(itemId: string, name: string) {
+  if (window.confirm(`确认删除主数据「${name}」？`)) {
+    store.deleteMasterData(store.masterDataKind, itemId)
+  }
+}
 
 onMounted(() => {
   store.loadMasterData()
@@ -68,12 +89,19 @@ onMounted(() => {
           <span>名称</span>
           <span>状态</span>
           <span>排序</span>
+          <span>操作</span>
         </div>
         <div v-for="item in currentItems" :key="item.id" class="table-row masterdata-row">
           <strong>{{ item.code }}</strong>
-          <span>{{ item.name }}</span>
-          <span>{{ item.is_active ? '启用' : '停用' }}</span>
-          <span>{{ item.sort_order }}</span>
+          <input class="masterdata-input" :value="item.name" :disabled="store.actionLoading" @change="updateName(item.id, $event)" />
+          <label class="field-required-toggle">
+            <input :checked="item.is_active" type="checkbox" :disabled="store.actionLoading" @change="toggleActive(item.id, $event)" />
+            {{ item.is_active ? '启用' : '停用' }}
+          </label>
+          <input class="masterdata-input short" :value="item.sort_order" type="number" :disabled="store.actionLoading" @change="updateSortOrder(item.id, $event)" />
+          <button class="icon-button danger-icon" type="button" :disabled="store.actionLoading" @click="removeItem(item.id, item.name)">
+            <Trash2 :size="15" />
+          </button>
         </div>
       </div>
     </article>

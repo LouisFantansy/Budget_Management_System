@@ -656,7 +656,20 @@ h2 {
 }
 
 .masterdata-row {
-  grid-template-columns: 160px minmax(220px, 1fr) 100px 80px;
+  grid-template-columns: 160px minmax(220px, 1fr) 110px 90px 60px;
+}
+
+.masterdata-input {
+  height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 0 9px;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.84);
+}
+
+.masterdata-input.short {
+  width: 78px;
 }
 
 .legend-list span {
