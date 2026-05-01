@@ -34,6 +34,11 @@ function recommendation(lineId: string | undefined) {
   if (!lineId) return null
   return store.recommendations[lineId]?.[0] ?? null
 }
+
+function lineError(lineId: string | undefined) {
+  if (!lineId) return ''
+  return store.lineErrors[lineId] ?? ''
+}
 </script>
 
 <template>
@@ -93,6 +98,7 @@ function recommendation(lineId: string | undefined) {
         v-for="line in store.budgetLines"
         :key="line.budgetNo"
         class="editor-row"
+        :class="{ 'has-row-error': !!lineError(line.id) }"
         :style="{ '--dynamic-columns': store.templateFields.length }"
       >
         <span>{{ line.budgetNo }}</span>
@@ -142,6 +148,7 @@ function recommendation(lineId: string | undefined) {
         >
           快速编辑
         </button>
+        <em v-if="lineError(line.id)" class="row-error">{{ lineError(line.id) }}</em>
       </div>
     </div>
   </section>

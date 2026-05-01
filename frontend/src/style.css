@@ -396,6 +396,17 @@ h2 {
   white-space: normal;
 }
 
+.row-error {
+  color: var(--red);
+  font-size: 12px;
+  font-style: normal;
+  white-space: normal;
+}
+
+.editor-row.has-row-error {
+  background: rgba(214, 69, 69, 0.04);
+}
+
 .stat-card,
 .panel {
   border: 1px solid var(--line);

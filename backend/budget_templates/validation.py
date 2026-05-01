@@ -7,6 +7,12 @@ from budget_templates.models import TemplateField
 
 
 def validate_dynamic_data(template, dynamic_data):
+    errors = collect_dynamic_data_errors(template, dynamic_data)
+    if errors:
+        raise ValidationError({'dynamic_data': errors})
+
+
+def collect_dynamic_data_errors(template, dynamic_data):
     errors = {}
     dynamic_data = dynamic_data or {}
     fields = template.fields.all()
@@ -21,8 +27,7 @@ def validate_dynamic_data(template, dynamic_data):
         if not _is_valid_type(field, value):
             errors[field.code] = f'字段类型必须为 {field.get_data_type_display()}。'
 
-    if errors:
-        raise ValidationError({'dynamic_data': errors})
+    return errors
 
 
 def _is_empty(value):

@@ -157,6 +157,24 @@ class BudgetApprovalFlowAPITests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertEqual(ApprovalRequest.objects.count(), 1)
 
+    def test_submit_is_blocked_when_line_has_missing_required_dynamic_fields(self):
+        TemplateField.objects.create(
+            template=self.template,
+            code='purchase_reason',
+            label='采购原因',
+            data_type=TemplateField.DataType.TEXT,
+            required=True,
+        )
+        self.client.force_authenticate(self.requester)
+
+        response = self.client.post(reverse('budgetversion-submit', args=[self.version.id]), {}, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data['detail'], '当前 Draft 存在未完成字段，不能送审。')
+        self.assertIn(str(self.line.id), response.data['lines'])
+        self.assertEqual(response.data['lines'][str(self.line.id)]['budget_no'], 'OPEX-001')
+        self.assertEqual(response.data['lines'][str(self.line.id)]['dynamic_data']['purchase_reason'], '该字段必填。')
+
     def test_submitted_or_approved_version_lines_are_not_mutable(self):
         self._submit_version()
         self.client.force_authenticate(self.requester)

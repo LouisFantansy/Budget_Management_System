@@ -5,6 +5,7 @@ from rest_framework.exceptions import ValidationError
 
 from accounts.models import RoleAssignment, User
 from approvals.models import ApprovalRequest, ApprovalStep
+from budget_templates.validation import collect_dynamic_data_errors
 from orgs.models import Department
 
 from .models import BudgetBook, BudgetLine, BudgetMonthlyPlan, BudgetVersion
@@ -34,6 +35,7 @@ def submit_budget_version(version, requester, approver_ids=None, comment=''):
         raise ValidationError({'status': '只有 Draft 版本可以送审。'})
     if book.current_draft_id and book.current_draft_id != version.id:
         raise ValidationError({'current_draft': '预算表已有其他当前 Draft。'})
+    _validate_version_before_submit(version)
 
     approvers = _resolve_budget_approvers(version, approver_ids)
     if not approvers:
@@ -71,6 +73,21 @@ def submit_budget_version(version, requester, approver_ids=None, comment=''):
         ]
     )
     return approval_request
+
+
+def _validate_version_before_submit(version):
+    template = version.book.template
+    line_errors = {}
+    for line in version.lines.all():
+        dynamic_errors = collect_dynamic_data_errors(template, line.dynamic_data)
+        if dynamic_errors:
+            line_errors[str(line.id)] = {
+                'budget_no': line.budget_no,
+                'description': line.description,
+                'dynamic_data': dynamic_errors,
+            }
+    if line_errors:
+        raise ValidationError({'lines': line_errors, 'detail': '当前 Draft 存在未完成字段，不能送审。'})
 
 
 @transaction.atomic

@@ -89,6 +89,7 @@ export const useWorkbenchStore = defineStore('workbench', {
       regions: [] as ApiNamedMasterData[],
     },
     fieldErrors: {} as Record<string, string>,
+    lineErrors: {} as Record<string, string>,
     recommendations: {} as Record<string, ApiPurchaseHistory[]>,
     cycleName: '2027 年度预算编制',
     versionContext: 'latest_approved' as VersionContext,
@@ -284,11 +285,15 @@ export const useWorkbenchStore = defineStore('workbench', {
       }
       this.actionLoading = true
       this.error = ''
+      this.fieldErrors = {}
+      this.lineErrors = {}
       try {
         await apiPost(`/budget-versions/${this.activeDraftVersionId}/submit/`)
         await this.load()
       } catch (error) {
-        this.error = error instanceof Error ? error.message : '提交送审失败'
+        const message = error instanceof Error ? error.message : '提交送审失败'
+        this.error = message
+        this.captureLineValidationErrors(message)
       } finally {
         this.actionLoading = false
       }
@@ -468,6 +473,7 @@ export const useWorkbenchStore = defineStore('workbench', {
       this.actionLoading = true
       this.error = ''
       this.fieldErrors = {}
+      this.lineErrors = {}
       try {
         await apiPatch(`/budget-lines/${line.id}/`, {
           dynamic_data: { [field.code]: normalizeDynamicValue(field, value) },
@@ -581,6 +587,20 @@ export const useWorkbenchStore = defineStore('workbench', {
         this.actionLoading = false
       }
     },
+    captureLineValidationErrors(message: string) {
+      const payload = extractJsonPayload(message)
+      const lines = payload?.lines as Record<string, { budget_no?: string; dynamic_data?: Record<string, string> }> | undefined
+      if (!lines) return
+      Object.entries(lines).forEach(([lineId, lineError]) => {
+        const fieldEntries = Object.entries(lineError.dynamic_data ?? {})
+        if (fieldEntries.length) {
+          this.lineErrors[lineId] = `${lineError.budget_no ?? '未命名条目'} 缺少必填字段`
+        }
+        fieldEntries.forEach(([fieldCode, fieldMessage]) => {
+          this.fieldErrors[`${lineId}:${fieldCode}`] = String(fieldMessage)
+        })
+      })
+    },
   },
 })
 
@@ -594,4 +614,14 @@ function inputTypeForDataType(dataType: ApiTemplateField['data_type']) {
   if (dataType === 'money' || dataType === 'number') return 'number'
   if (dataType === 'date') return 'date'
   return 'text'
+}
+
+function extractJsonPayload(message: string) {
+  const jsonStart = message.indexOf('{')
+  if (jsonStart < 0) return null
+  try {
+    return JSON.parse(message.slice(jsonStart))
+  } catch {
+    return null
+  }
 }
