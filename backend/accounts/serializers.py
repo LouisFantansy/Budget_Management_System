@@ -13,3 +13,8 @@ class RoleAssignmentSerializer(serializers.ModelSerializer):
     class Meta:
         model = RoleAssignment
         fields = '__all__'
+
+
+class LoginSerializer(serializers.Serializer):
+    username = serializers.CharField()
+    password = serializers.CharField(write_only=True)

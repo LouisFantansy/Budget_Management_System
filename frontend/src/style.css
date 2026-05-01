@@ -204,6 +204,29 @@ button:disabled {
   gap: 10px;
 }
 
+.login-box,
+.user-box {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.login-box input {
+  width: 118px;
+  height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0 9px;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.82);
+}
+
+.user-box span {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 650;
+}
+
 .icon-button,
 .context-pill,
 .primary-button,

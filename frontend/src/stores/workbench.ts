@@ -8,6 +8,7 @@ import type {
   ApiBudgetTemplate,
   ApiBudgetVersion,
   ApiTemplateField,
+  ApiUser,
   ApiVersionDiff,
   ApprovalItem,
   BudgetLinePreview,
@@ -52,6 +53,11 @@ export const useWorkbenchStore = defineStore('workbench', {
     loading: false,
     actionLoading: false,
     error: '',
+    currentUser: null as ApiUser | null,
+    loginForm: {
+      username: 'primary-admin',
+      password: 'password',
+    },
     activeDraftVersionId: '',
     activeDraftDepartmentId: '',
     activeTemplateId: '',
@@ -175,6 +181,37 @@ export const useWorkbenchStore = defineStore('workbench', {
         this.error = error instanceof Error ? error.message : '加载失败'
       } finally {
         this.loading = false
+      }
+    },
+    async loadMe() {
+      try {
+        this.currentUser = await apiGet<ApiUser>('/auth/me/')
+      } catch {
+        this.currentUser = null
+      }
+    },
+    async login() {
+      this.actionLoading = true
+      this.error = ''
+      try {
+        this.currentUser = await apiPost<ApiUser>('/auth/login/', this.loginForm)
+        await this.load()
+      } catch (error) {
+        this.error = error instanceof Error ? error.message : '登录失败'
+      } finally {
+        this.actionLoading = false
+      }
+    },
+    async logout() {
+      this.actionLoading = true
+      this.error = ''
+      try {
+        await apiPost('/auth/logout/')
+        this.currentUser = null
+      } catch (error) {
+        this.error = error instanceof Error ? error.message : '退出失败'
+      } finally {
+        this.actionLoading = false
       }
     },
     async approveApproval(id: string) {

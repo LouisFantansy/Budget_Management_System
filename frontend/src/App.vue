@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { onMounted } from 'vue'
 import {
   BarChart3,
   Bell,
@@ -12,6 +13,9 @@ import {
   Search,
   Settings2,
 } from 'lucide-vue-next'
+import { useWorkbenchStore } from './stores/workbench'
+
+const store = useWorkbenchStore()
 
 const navItems = [
   { label: '工作台', to: '/', icon: LayoutDashboard },
@@ -21,6 +25,10 @@ const navItems = [
   { label: '模板管理', to: '/templates', icon: Settings2 },
   { label: '版本分析', to: '/versions', icon: GitBranch },
 ]
+
+onMounted(() => {
+  store.loadMe()
+})
 </script>
 
 <template>
@@ -64,6 +72,15 @@ const navItems = [
             最新 Approved
             <ChevronDown :size="16" />
           </button>
+          <div v-if="!store.currentUser" class="login-box">
+            <input v-model="store.loginForm.username" placeholder="用户名" />
+            <input v-model="store.loginForm.password" type="password" placeholder="密码" />
+            <button class="secondary-button" type="button" :disabled="store.actionLoading" @click="store.login">登录</button>
+          </div>
+          <div v-else class="user-box">
+            <span>{{ store.currentUser.display_name || store.currentUser.username }}</span>
+            <button class="secondary-button" type="button" :disabled="store.actionLoading" @click="store.logout">退出</button>
+          </div>
           <button class="icon-button" type="button" aria-label="通知">
             <Bell :size="18" />
           </button>

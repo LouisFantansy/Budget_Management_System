@@ -155,3 +155,12 @@ export interface ApiBudgetOverview {
     quantity: string
   }>
 }
+
+export interface ApiUser {
+  id: number
+  username: string
+  display_name: string
+  employee_id: string
+  email: string
+  primary_department: string | null
+}

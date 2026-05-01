@@ -54,7 +54,7 @@ npm run build
 
 ### 本地认证
 
-开发阶段可用 Basic Auth：
+开发阶段支持 session 登录，也保留 Basic Auth：
 
 ```js
 localStorage.setItem('budget_basic_auth', btoa('primary-admin:password'))
@@ -88,7 +88,7 @@ npm run build
 
 ### 当前测试基线
 
-- 后端测试数：33
+- 后端测试数：36
 - 前端构建：通过
 
 ## Demo Data
