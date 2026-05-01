@@ -56,6 +56,17 @@ export async function apiDelete(path: string): Promise<void> {
   }
 }
 
+export async function apiGetText(path: string): Promise<string> {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    headers: authHeaders(),
+    credentials: 'include',
+  })
+  if (!response.ok) {
+    throw await apiError(response)
+  }
+  return response.text()
+}
+
 export function setBasicAuth(username: string, password: string) {
   window.localStorage.setItem(BASIC_AUTH_STORAGE_KEY, window.btoa(`${username}:${password}`))
 }

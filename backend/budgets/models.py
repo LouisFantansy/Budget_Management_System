@@ -133,4 +133,40 @@ class BudgetMonthlyPlan(TimestampedModel):
     def __str__(self):
         return f'{self.line} - {self.month}月'
 
+
+class ImportJob(TimestampedModel):
+    class Mode(models.TextChoices):
+        APPEND = 'append', '追加导入'
+        REPLACE = 'replace', '覆盖导入'
+
+    class Status(models.TextChoices):
+        PROCESSING = 'processing', '处理中'
+        SUCCESS = 'success', '成功'
+        FAILED = 'failed', '失败'
+
+    version = models.ForeignKey('budgets.BudgetVersion', on_delete=models.CASCADE, related_name='import_jobs')
+    requester = models.ForeignKey(
+        'accounts.User',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='import_jobs',
+    )
+    source_name = models.CharField(max_length=255, blank=True)
+    mode = models.CharField(max_length=16, choices=Mode.choices, default=Mode.APPEND)
+    status = models.CharField(max_length=16, choices=Status.choices, default=Status.PROCESSING)
+    total_rows = models.PositiveIntegerField(default=0)
+    imported_rows = models.PositiveIntegerField(default=0)
+    error_rows = models.PositiveIntegerField(default=0)
+    summary = models.JSONField(default=dict, blank=True)
+    errors = models.JSONField(default=list, blank=True)
+
+    class Meta:
+        verbose_name = '导入任务'
+        verbose_name_plural = '导入任务'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'{self.version} - {self.get_status_display()}'
+
 # Create your models here.

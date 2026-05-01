@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import BudgetBook, BudgetLine, BudgetMonthlyPlan, BudgetVersion
+from .models import BudgetBook, BudgetLine, BudgetMonthlyPlan, BudgetVersion, ImportJob
 
 
 class BudgetMonthlyPlanInline(admin.TabularInline):
@@ -34,5 +34,12 @@ class BudgetLineAdmin(admin.ModelAdmin):
 class BudgetMonthlyPlanAdmin(admin.ModelAdmin):
     list_display = ('line', 'month', 'quantity', 'amount')
     list_filter = ('month',)
+
+
+@admin.register(ImportJob)
+class ImportJobAdmin(admin.ModelAdmin):
+    list_display = ('version', 'source_name', 'mode', 'status', 'total_rows', 'imported_rows', 'error_rows', 'requester')
+    list_filter = ('mode', 'status')
+    search_fields = ('source_name', 'version__book__department__name', 'requester__username')
 
 # Register your models here.

@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { onMounted } from 'vue'
-import { GitBranchPlus, LockKeyhole, Plus, Send, UploadCloud } from 'lucide-vue-next'
+import { computed, onMounted, ref } from 'vue'
+import { Download, GitBranchPlus, LockKeyhole, Plus, Send, UploadCloud } from 'lucide-vue-next'
 import { useWorkbenchStore } from '../stores/workbench'
 
 const store = useWorkbenchStore()
+const showImportPanel = ref(false)
 
 onMounted(() => {
   if (!store.budgetLines.length) store.load()
@@ -39,6 +40,8 @@ function lineError(lineId: string | undefined) {
   if (!lineId) return ''
   return store.lineErrors[lineId] ?? ''
 }
+
+const latestImportSummary = computed(() => store.latestImportJob?.summary.message ?? '')
 </script>
 
 <template>
@@ -48,9 +51,13 @@ function lineError(lineId: string | undefined) {
       <h1>预算编制表</h1>
     </div>
     <div class="button-group">
-      <button class="secondary-button" type="button">
+      <button class="secondary-button" type="button" :disabled="store.actionLoading" @click="showImportPanel = !showImportPanel">
         <UploadCloud :size="17" />
         Excel 导入
+      </button>
+      <button class="secondary-button" type="button" :disabled="store.actionLoading" @click="store.exportActiveDraftCsv">
+        <Download :size="17" />
+        导出 CSV
       </button>
       <button class="secondary-button" type="button" :disabled="store.actionLoading" @click="store.createRevisionDraft">
         <GitBranchPlus :size="17" />
@@ -68,6 +75,54 @@ function lineError(lineId: string | undefined) {
   </section>
 
   <p v-if="store.error" class="error-banner">{{ store.error }}</p>
+
+  <section v-if="showImportPanel" class="panel">
+    <div class="panel-title">
+      <div>
+        <p class="eyebrow">Import / Export</p>
+        <h2>Excel 粘贴导入</h2>
+      </div>
+      <UploadCloud :size="18" />
+    </div>
+    <div class="field-form import-toolbar">
+      <input v-model="store.importDraft.sourceName" placeholder="来源文件名，如 budget-import.tsv" />
+      <select v-model="store.importDraft.mode">
+        <option value="append">追加导入</option>
+        <option value="replace">覆盖导入</option>
+      </select>
+      <button class="primary-button" type="button" :disabled="store.actionLoading" @click="store.importBudgetLines">
+        开始导入
+      </button>
+    </div>
+    <textarea
+      v-model="store.importDraft.rawText"
+      class="import-textarea"
+      placeholder="直接粘贴 Excel 复制出的表格内容，支持制表符 TSV 或 CSV。"
+    ></textarea>
+    <p v-if="latestImportSummary" class="empty-note">{{ latestImportSummary }}</p>
+    <div v-if="store.latestImportJob" class="import-job-card">
+      <strong>最近导入：{{ store.latestImportJob.source_name || '未命名导入' }}</strong>
+      <span>
+        {{ store.latestImportJob.status }} · 总行数 {{ store.latestImportJob.total_rows }} · 成功 {{ store.latestImportJob.imported_rows }} · 错误
+        {{ store.latestImportJob.error_rows }}
+      </span>
+      <button
+        v-if="store.latestImportJob.error_rows"
+        class="text-button"
+        type="button"
+        :disabled="store.actionLoading"
+        @click="store.loadImportJobErrors(store.latestImportJob.id)"
+      >
+        查看错误
+      </button>
+    </div>
+    <div v-if="store.importJobErrors?.errors.length" class="import-error-list">
+      <div v-for="item in store.importJobErrors.errors" :key="item.row" class="import-error-item">
+        <strong>第 {{ item.row }} 行</strong>
+        <pre>{{ JSON.stringify(item.errors, null, 2) }}</pre>
+      </div>
+    </div>
+  </section>
 
   <section class="panel editor-panel">
     <div class="panel-title">

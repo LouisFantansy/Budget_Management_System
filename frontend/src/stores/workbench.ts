@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { apiDelete, apiGet, apiPatch, apiPost, type PaginatedResponse } from '../api/client'
+import { apiDelete, apiGet, apiGetText, apiPatch, apiPost, type PaginatedResponse } from '../api/client'
 import type {
   ApiApprovalRequest,
   ApiBudgetBook,
@@ -11,6 +11,8 @@ import type {
   ApiBudgetTemplate,
   ApiBudgetVersion,
   ApiCategory,
+  ApiImportJob,
+  ApiImportJobErrors,
   ApiTemplateField,
   ApiUser,
   ApiNamedMasterData,
@@ -84,6 +86,14 @@ export const useWorkbenchStore = defineStore('workbench', {
       isDefault: true,
     },
     templateFields: [] as ApiTemplateField[],
+    importJobs: [] as ApiImportJob[],
+    latestImportJob: null as ApiImportJob | null,
+    importJobErrors: null as ApiImportJobErrors | null,
+    importDraft: {
+      sourceName: 'budget-import.tsv',
+      mode: 'append' as ApiImportJob['mode'],
+      rawText: '',
+    },
     templates: [] as ApiBudgetTemplate[],
     templateFieldDraft: {
       code: '',
@@ -212,6 +222,7 @@ export const useWorkbenchStore = defineStore('workbench', {
         this.activeTemplateId = editableBook?.template ?? books.results[0]?.template ?? ''
         this.revisionSourceBookId = books.results.find((book) => !book.current_draft && book.latest_approved_version)?.id ?? ''
         await this.loadTemplateFields()
+        await this.loadImportJobs()
 
         const approvedLines = this.budgetLines.length
         const totalAmount = linePages
@@ -460,6 +471,85 @@ export const useWorkbenchStore = defineStore('workbench', {
       }
       const fields = await apiGet<PaginatedResponse<ApiTemplateField>>(`/template-fields/?template=${this.activeTemplateId}`)
       this.templateFields = fields.results.sort((left, right) => left.order - right.order)
+    },
+    async loadImportJobs() {
+      if (!this.activeDraftVersionId) {
+        this.importJobs = []
+        this.latestImportJob = null
+        return
+      }
+      try {
+        const response = await apiGet<PaginatedResponse<ApiImportJob>>(`/import-jobs/?version=${this.activeDraftVersionId}`)
+        this.importJobs = response.results
+        this.latestImportJob = response.results[0] ?? null
+      } catch (error) {
+        this.error = error instanceof Error ? error.message : '加载导入任务失败'
+      }
+    },
+    async importBudgetLines() {
+      if (!this.activeDraftVersionId) {
+        this.error = '当前没有可导入的 Draft 版本'
+        return
+      }
+      if (!this.importDraft.rawText.trim()) {
+        this.error = '请粘贴 Excel/CSV 内容后再导入'
+        return
+      }
+      this.actionLoading = true
+      this.error = ''
+      this.importJobErrors = null
+      try {
+        const job = await apiPost<ApiImportJob>('/import-jobs/', {
+          version: this.activeDraftVersionId,
+          source_name: this.importDraft.sourceName,
+          mode: this.importDraft.mode,
+          raw_text: this.importDraft.rawText,
+        })
+        this.latestImportJob = job
+        await this.loadImportJobs()
+        if (job.status === 'failed') {
+          await this.loadImportJobErrors(job.id)
+          this.error = job.summary.message ?? '导入失败'
+          return
+        }
+        this.importDraft.rawText = ''
+        await this.load()
+      } catch (error) {
+        this.error = error instanceof Error ? error.message : '导入预算条目失败'
+      } finally {
+        this.actionLoading = false
+      }
+    },
+    async loadImportJobErrors(jobId: string) {
+      try {
+        this.importJobErrors = await apiGet<ApiImportJobErrors>(`/import-jobs/${jobId}/errors/`)
+      } catch (error) {
+        this.error = error instanceof Error ? error.message : '加载导入错误失败'
+      }
+    },
+    async exportActiveDraftCsv() {
+      if (!this.activeDraftVersionId) {
+        this.error = '当前没有可导出的 Draft 版本'
+        return
+      }
+      this.actionLoading = true
+      this.error = ''
+      try {
+        const content = await apiGetText(`/budget-versions/${this.activeDraftVersionId}/export-csv/`)
+        const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' })
+        const url = window.URL.createObjectURL(blob)
+        const link = document.createElement('a')
+        link.href = url
+        link.download = `budget-version-${this.activeDraftVersionId}.csv`
+        document.body.appendChild(link)
+        link.click()
+        link.remove()
+        window.URL.revokeObjectURL(url)
+      } catch (error) {
+        this.error = error instanceof Error ? error.message : '导出预算条目失败'
+      } finally {
+        this.actionLoading = false
+      }
     },
     async loadTemplates() {
       this.loading = true

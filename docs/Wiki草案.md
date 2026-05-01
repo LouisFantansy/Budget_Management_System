@@ -63,7 +63,7 @@ localStorage.setItem('budget_basic_auth', btoa('primary-admin:password'))
 ### 页面
 
 - 工作台：预算状态、审批和条目预览。
-- 预算编制：预算行、动态模板字段、提交送审、创建修订。
+- 预算编制：预算行、动态模板字段、提交送审、创建修订、粘贴导入和 CSV 导出。
 - 审批中心：通过和退回。
 - 预算看板：部门、Category、月度聚合，支持部门聚焦筛选、保存视图和默认看板配置。
 - 主数据：支持 Project Category、Product Line、Project 关系维护。
@@ -91,6 +91,7 @@ npm run build
 
 - `manage.py test masterdata`：6 通过
 - `manage.py test analytics`：13 通过
+- `manage.py test budgets`：30 通过
 - 前端构建：通过
 
 ## Demo Data

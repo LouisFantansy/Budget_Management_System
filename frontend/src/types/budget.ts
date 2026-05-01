@@ -242,3 +242,35 @@ export interface ApiDashboardApplyResponse {
   config: ApiDashboardConfig
   overview: ApiBudgetOverview
 }
+
+export interface ApiImportJob {
+  id: string
+  version: string
+  requester: number | null
+  requester_name: string
+  source_name: string
+  mode: 'append' | 'replace'
+  status: 'processing' | 'success' | 'failed'
+  total_rows: number
+  imported_rows: number
+  error_rows: number
+  summary: {
+    message?: string
+    mode?: string
+    imported_budget_nos?: string[]
+  }
+  errors: Array<{
+    row: number
+    errors: Record<string, unknown>
+  }>
+}
+
+export interface ApiImportJobErrors {
+  id: string
+  status: 'processing' | 'success' | 'failed'
+  error_rows: number
+  errors: Array<{
+    row: number
+    errors: Record<string, unknown>
+  }>
+}

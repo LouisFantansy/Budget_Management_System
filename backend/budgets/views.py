@@ -1,15 +1,19 @@
+from django.http import HttpResponse
 from django.db.models import Sum
 from rest_framework import decorators, response, viewsets
 from rest_framework.exceptions import ValidationError
 
 from accounts.access import accessible_department_ids, can_edit_department_budget, is_global_budget_user
 from .diff import compare_versions
+from .import_export import export_budget_version_csv, import_budget_lines
 from .models import BudgetBook, BudgetLine, BudgetMonthlyPlan, BudgetVersion
 from .serializers import (
     BudgetBookSerializer,
     BudgetLineSerializer,
     BudgetMonthlyPlanSerializer,
     BudgetVersionSerializer,
+    ImportJobCreateSerializer,
+    ImportJobSerializer,
 )
 from .services import create_revision_draft, submit_budget_version
 
@@ -103,6 +107,15 @@ class BudgetVersionViewSet(viewsets.ModelViewSet):
             raise ValidationError({'base_version': str(exc)}) from exc
         return response.Response(payload)
 
+    @decorators.action(detail=True, methods=['get'], url_path='export-csv')
+    def export_csv(self, request, pk=None):
+        version = self.get_object()
+        csv_content = export_budget_version_csv(version)
+        filename = f'budget-version-{version.id}.csv'
+        response_obj = HttpResponse(csv_content, content_type='text/csv; charset=utf-8')
+        response_obj['Content-Disposition'] = f'attachment; filename="{filename}"'
+        return response_obj
+
 
 class BudgetLineViewSet(viewsets.ModelViewSet):
     queryset = BudgetLine.objects.select_related('version', 'department', 'category', 'project').prefetch_related('monthly_plans').all()
@@ -143,5 +156,54 @@ class BudgetMonthlyPlanViewSet(viewsets.ModelViewSet):
         if not can_edit_department_budget(self.request.user, instance.line.version.book.department_id):
             raise ValidationError({'line': '没有权限删除该部门月度计划。'})
         super().perform_destroy(instance)
+
+
+class ImportJobViewSet(viewsets.ModelViewSet):
+    queryset = BudgetVersion.objects.none()
+    serializer_class = ImportJobSerializer
+    filterset_fields = ['version', 'status', 'mode']
+    http_method_names = ['get', 'post', 'head', 'options']
+
+    def get_queryset(self):
+        from .models import ImportJob
+
+        queryset = ImportJob.objects.select_related('version', 'version__book', 'requester').all()
+        if is_global_budget_user(self.request.user):
+            return queryset
+        department_ids = accessible_department_ids(self.request.user)
+        return queryset.filter(version__book__department_id__in=department_ids)
+
+    def get_serializer_class(self):
+        if self.action == 'create':
+            return ImportJobCreateSerializer
+        return ImportJobSerializer
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        version = serializer.validated_data['version']
+        if not can_edit_department_budget(request.user, version.book.department_id):
+            raise ValidationError({'version': '没有权限导入该部门预算。'})
+        job = import_budget_lines(
+            version,
+            request.user,
+            source_name=serializer.validated_data.get('source_name', ''),
+            raw_text=serializer.validated_data['raw_text'],
+            mode=serializer.validated_data['mode'],
+        )
+        output = ImportJobSerializer(job, context=self.get_serializer_context())
+        return response.Response(output.data, status=201)
+
+    @decorators.action(detail=True, methods=['get'])
+    def errors(self, request, pk=None):
+        import_job = self.get_object()
+        return response.Response(
+            {
+                'id': str(import_job.id),
+                'status': import_job.status,
+                'error_rows': import_job.error_rows,
+                'errors': import_job.errors,
+            }
+        )
 
 # Create your views here.

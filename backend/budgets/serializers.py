@@ -2,7 +2,7 @@ from rest_framework import serializers
 
 from accounts.access import can_edit_department_budget
 from budget_templates.validation import validate_dynamic_data
-from .models import BudgetBook, BudgetLine, BudgetMonthlyPlan, BudgetVersion
+from .models import BudgetBook, BudgetLine, BudgetMonthlyPlan, BudgetVersion, ImportJob
 
 
 class BudgetMonthlyPlanSerializer(serializers.ModelSerializer):
@@ -81,3 +81,32 @@ class BudgetBookSerializer(serializers.ModelSerializer):
     class Meta:
         model = BudgetBook
         fields = '__all__'
+
+
+class ImportJobSerializer(serializers.ModelSerializer):
+    requester_name = serializers.SerializerMethodField(read_only=True)
+
+    class Meta:
+        model = ImportJob
+        fields = '__all__'
+        read_only_fields = [
+            'requester',
+            'status',
+            'total_rows',
+            'imported_rows',
+            'error_rows',
+            'summary',
+            'errors',
+        ]
+
+    def get_requester_name(self, obj):
+        if not obj.requester:
+            return ''
+        return obj.requester.display_name or obj.requester.username
+
+
+class ImportJobCreateSerializer(serializers.Serializer):
+    version = serializers.PrimaryKeyRelatedField(queryset=BudgetVersion.objects.select_related('book', 'book__department'))
+    source_name = serializers.CharField(required=False, allow_blank=True, max_length=255)
+    mode = serializers.ChoiceField(choices=ImportJob.Mode.choices, default=ImportJob.Mode.APPEND)
+    raw_text = serializers.CharField()

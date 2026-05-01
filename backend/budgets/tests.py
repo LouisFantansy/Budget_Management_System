@@ -7,9 +7,10 @@ from accounts.models import RoleAssignment, User
 from approvals.models import ApprovalRequest, ApprovalStep
 from budget_cycles.models import BudgetCycle
 from budget_templates.models import BudgetTemplate, TemplateField
+from masterdata.models import Category, ProductLine, Project, ProjectCategory, Region, Vendor
 from orgs.models import Department
 
-from .models import BudgetBook, BudgetLine, BudgetMonthlyPlan, BudgetVersion
+from .models import BudgetBook, BudgetLine, BudgetMonthlyPlan, BudgetVersion, ImportJob
 
 
 class BudgetApprovalFlowAPITests(APITestCase):
@@ -633,3 +634,226 @@ class BudgetDataScopeAPITests(APITestCase):
         book.latest_approved_version = version
         book.save(update_fields=['latest_approved_version', 'updated_at'])
         return book
+
+
+class BudgetImportExportAPITests(APITestCase):
+    def setUp(self):
+        self.department = Department.objects.create(name='平台软件部', code='SW-IMPORT', level=Department.Level.SECONDARY)
+        self.requester = User.objects.create_user(username='import-owner', password='pass')
+        self.other_user = User.objects.create_user(username='other-owner', password='pass')
+        RoleAssignment.objects.create(
+            user=self.requester,
+            role=RoleAssignment.Role.SECONDARY_BUDGET_OWNER,
+            department=self.department,
+        )
+        other_department = Department.objects.create(name='硬件系统部', code='HW-IMPORT', level=Department.Level.SECONDARY)
+        RoleAssignment.objects.create(
+            user=self.other_user,
+            role=RoleAssignment.Role.SECONDARY_BUDGET_OWNER,
+            department=other_department,
+        )
+        self.cycle = BudgetCycle.objects.create(year=2029, name='2029 年度预算编制')
+        self.template = BudgetTemplate.objects.create(
+            cycle=self.cycle,
+            name='OPEX 模板',
+            expense_type=BudgetTemplate.ExpenseType.OPEX,
+            status=BudgetTemplate.Status.ACTIVE,
+        )
+        TemplateField.objects.create(
+            template=self.template,
+            code='purchase_reason',
+            label='采购原因补充',
+            data_type=TemplateField.DataType.TEXT,
+            required=True,
+            import_aliases=['采购原因补充'],
+        )
+        self.book = BudgetBook.objects.create(
+            cycle=self.cycle,
+            department=self.department,
+            expense_type=BudgetBook.ExpenseType.OPEX,
+            template=self.template,
+        )
+        self.version = BudgetVersion.objects.create(book=self.book, status=BudgetVersion.Status.DRAFT)
+        self.book.current_draft = self.version
+        self.book.save(update_fields=['current_draft'])
+        self.category = Category.objects.create(code='CLOUD-IMP', name='Cloud Service', level=Category.Level.CATEGORY)
+        self.category_l1 = Category.objects.create(code='CLOUD-L1-IMP', name='Cloud Infra', level=Category.Level.L1)
+        self.category_l2 = Category.objects.create(code='CLOUD-L2-IMP', name='Cloud VM', level=Category.Level.L2)
+        self.project_category = ProjectCategory.objects.create(code='PLATFORM-IMP', name='平台项目')
+        self.product_line = ProductLine.objects.create(code='ENT-IMP', name='企业盘')
+        self.project = Project.objects.create(
+            code='TD-IMP',
+            name='TD 项目',
+            project_category=self.project_category,
+            product_line=self.product_line,
+        )
+        self.vendor = Vendor.objects.create(code='AWS-IMP', name='Amazon')
+        self.region = Region.objects.create(code='CN-IMP', name='China')
+        self.existing_line = BudgetLine.objects.create(
+            version=self.version,
+            department=self.department,
+            line_no=1,
+            budget_no='OLD-001',
+            description='旧条目',
+            total_amount='10.00',
+        )
+        BudgetMonthlyPlan.objects.create(line=self.existing_line, month=1, quantity='1.00', amount='10.00')
+
+    def test_can_import_budget_lines_from_tsv(self):
+        self.client.force_authenticate(self.requester)
+
+        response = self.client.post(
+            reverse('importjob-list'),
+            {
+                'version': str(self.version.id),
+                'source_name': 'opex-import.tsv',
+                'mode': 'append',
+                'raw_text': self._valid_import_text('NEW-001'),
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data['status'], ImportJob.Status.SUCCESS)
+        imported_line = BudgetLine.objects.get(budget_no='NEW-001')
+        self.assertEqual(imported_line.description, '研发云测试资源扩容')
+        self.assertEqual(imported_line.category, self.category)
+        self.assertEqual(imported_line.project, self.project)
+        self.assertEqual(imported_line.vendor, self.vendor)
+        self.assertEqual(imported_line.region, self.region)
+        self.assertEqual(imported_line.dynamic_data['purchase_reason'], '业务增长')
+        self.assertEqual(imported_line.monthly_plans.count(), 12)
+        january_plan = imported_line.monthly_plans.get(month=1)
+        self.assertEqual(str(january_plan.quantity), '1.00')
+        self.assertEqual(str(january_plan.amount), '100.00')
+
+    def test_replace_mode_removes_existing_lines_before_import(self):
+        self.client.force_authenticate(self.requester)
+
+        response = self.client.post(
+            reverse('importjob-list'),
+            {
+                'version': str(self.version.id),
+                'mode': 'replace',
+                'raw_text': self._valid_import_text('REPLACE-001'),
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(BudgetLine.objects.filter(version=self.version).count(), 1)
+        self.assertFalse(BudgetLine.objects.filter(budget_no='OLD-001').exists())
+        self.assertTrue(BudgetLine.objects.filter(budget_no='REPLACE-001').exists())
+
+    def test_invalid_import_creates_failed_job_with_error_report(self):
+        self.client.force_authenticate(self.requester)
+
+        response = self.client.post(
+            reverse('importjob-list'),
+            {
+                'version': str(self.version.id),
+                'source_name': 'invalid.tsv',
+                'mode': 'append',
+                'raw_text': self._invalid_import_text(),
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data['status'], ImportJob.Status.FAILED)
+        self.assertEqual(response.data['error_rows'], 1)
+        self.assertEqual(BudgetLine.objects.filter(version=self.version).count(), 1)
+        error_response = self.client.get(reverse('importjob-errors', args=[response.data['id']]))
+        self.assertEqual(error_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(error_response.data['error_rows'], 1)
+        self.assertIn('total_amount', error_response.data['errors'][0]['errors'])
+        self.assertIn('dynamic_data', error_response.data['errors'][0]['errors'])
+
+    def test_other_department_user_cannot_import(self):
+        self.client.force_authenticate(self.other_user)
+
+        response = self.client.post(
+            reverse('importjob-list'),
+            {'version': str(self.version.id), 'raw_text': self._valid_import_text('NOPE-001')},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(ImportJob.objects.count(), 0)
+
+    def test_can_export_budget_version_as_csv(self):
+        self.client.force_authenticate(self.requester)
+        self.existing_line.category = self.category
+        self.existing_line.project = self.project
+        self.existing_line.vendor = self.vendor
+        self.existing_line.region = self.region
+        self.existing_line.reason = '已有说明'
+        self.existing_line.dynamic_data = {'purchase_reason': '已有补充'}
+        self.existing_line.local_comments = {'comment': '已有备注'}
+        self.existing_line.unit_price = '10.00'
+        self.existing_line.total_quantity = '1.00'
+        self.existing_line.total_amount = '10.00'
+        self.existing_line.save()
+
+        response = self.client.get(reverse('budgetversion-export-csv', args=[self.version.id]))
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response['Content-Type'], 'text/csv; charset=utf-8')
+        content = response.content.decode('utf-8')
+        self.assertIn('预算编号', content)
+        self.assertIn('OLD-001', content)
+        self.assertIn('已有补充', content)
+        self.assertIn('已有备注', content)
+
+    def _valid_import_text(self, budget_no):
+        headers = [
+            '预算编号', '预算部门', '成本中心代码', 'category', 'category L1', 'category L2', 'GL Amount',
+            'Project', 'Project Category', 'Product Line', '预算条目描述', '供应商', '采购原因', '地区',
+            '单价', '总数量', '总金额', '备注',
+        ]
+        headers.extend([f'{month}月采购数量' for month in range(1, 13)])
+        headers.extend([f'{month}月采购金额' for month in range(1, 13)])
+        headers.append('采购原因补充')
+        quantities = ['1'] + ['0'] * 11
+        amounts = ['100'] + ['0'] * 11
+        values = [
+            budget_no,
+            self.department.name,
+            'CC1001',
+            self.category.name,
+            self.category_l1.name,
+            self.category_l2.name,
+            'GL100',
+            self.project.name,
+            self.project_category.name,
+            self.product_line.name,
+            '研发云测试资源扩容',
+            self.vendor.name,
+            '扩容需求',
+            self.region.name,
+            '100',
+            '1',
+            '100',
+            '备注信息',
+        ]
+        values.extend(quantities)
+        values.extend(amounts)
+        values.append('业务增长')
+        return '\n'.join(['\t'.join(headers), '\t'.join(values)])
+
+    def _invalid_import_text(self):
+        headers = [
+            '预算编号', '预算部门', '预算条目描述', '单价', '总数量', '总金额', '1月采购数量', '1月采购金额', '采购原因补充',
+        ]
+        values = [
+            'BAD-001',
+            self.department.name,
+            '错误条目',
+            'not-a-number',
+            '3',
+            '500',
+            '1',
+            '100',
+            '',
+        ]
+        return '\n'.join(['\t'.join(headers), '\t'.join(values)])

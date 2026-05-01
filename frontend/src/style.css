@@ -592,6 +592,59 @@ h2 {
   min-height: 520px;
 }
 
+.import-toolbar {
+  grid-template-columns: minmax(220px, 1.2fr) 160px auto;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.import-textarea {
+  width: 100%;
+  min-height: 180px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.86);
+  resize: vertical;
+}
+
+.import-job-card {
+  margin-top: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.72);
+  display: grid;
+  gap: 6px;
+}
+
+.import-job-card span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.import-error-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.import-error-item {
+  border: 1px solid rgba(214, 69, 69, 0.18);
+  border-radius: 8px;
+  padding: 12px;
+  background: rgba(214, 69, 69, 0.05);
+}
+
+.import-error-item pre {
+  margin: 8px 0 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .approval-detail {
   min-height: 236px;
 }
