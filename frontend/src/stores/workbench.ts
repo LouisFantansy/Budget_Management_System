@@ -12,6 +12,7 @@ import type {
   ApiUser,
   ApiNamedMasterData,
   ApiProject,
+  ApiPurchaseHistory,
   ApiVersionDiff,
   ApprovalItem,
   BudgetLinePreview,
@@ -88,6 +89,7 @@ export const useWorkbenchStore = defineStore('workbench', {
       regions: [] as ApiNamedMasterData[],
     },
     fieldErrors: {} as Record<string, string>,
+    recommendations: {} as Record<string, ApiPurchaseHistory[]>,
     cycleName: '2027 年度预算编制',
     versionContext: 'latest_approved' as VersionContext,
     summaryStats: [
@@ -165,6 +167,7 @@ export const useWorkbenchStore = defineStore('workbench', {
             versionId: line.version,
             departmentId: line.department,
             dynamicData: line.dynamic_data,
+            unitPrice: line.unit_price,
             budgetNo: line.budget_no,
             description: line.description,
             category: line.category ? categoryNames[line.category] ?? line.category : '-',
@@ -454,6 +457,33 @@ export const useWorkbenchStore = defineStore('workbench', {
         const message = error instanceof Error ? error.message : '更新动态字段失败'
         this.error = message
         this.fieldErrors[`${line.id}:${field.code}`] = message
+      } finally {
+        this.actionLoading = false
+      }
+    },
+    async loadRecommendations(line: BudgetLinePreview) {
+      if (!line.id || !line.description.trim()) return
+      this.error = ''
+      try {
+        this.recommendations[line.id] = await apiGet<ApiPurchaseHistory[]>(
+          `/purchase-history/suggest/?q=${encodeURIComponent(line.description)}`,
+        )
+      } catch (error) {
+        this.error = error instanceof Error ? error.message : '加载推荐价失败'
+      }
+    },
+    async applyRecommendedPrice(line: BudgetLinePreview, price: string) {
+      if (!line.id || line.locked || line.versionId !== this.activeDraftVersionId) {
+        this.error = '只能对当前 Draft 版本应用推荐价'
+        return
+      }
+      this.actionLoading = true
+      this.error = ''
+      try {
+        await apiPatch(`/budget-lines/${line.id}/`, { unit_price: price })
+        await this.load()
+      } catch (error) {
+        this.error = error instanceof Error ? error.message : '应用推荐价失败'
       } finally {
         this.actionLoading = false
       }

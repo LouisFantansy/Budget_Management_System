@@ -31,6 +31,7 @@ export interface BudgetLinePreview {
   versionId?: string
   departmentId?: string
   dynamicData?: Record<string, unknown>
+  unitPrice?: string
   budgetNo: string
   description: string
   category: string
@@ -60,6 +61,7 @@ export interface ApiBudgetLine {
   category: string | null
   project: string | null
   department: string
+  unit_price: string
   total_amount: string
   dynamic_data: Record<string, unknown>
   source_ref_type: string
@@ -184,3 +186,11 @@ export interface ApiProject extends ApiNamedMasterData {
 }
 
 export type MasterDataKind = 'categories' | 'projects' | 'vendors' | 'regions'
+
+export interface ApiPurchaseHistory {
+  id: string
+  purchase_name: string
+  deal_price: string
+  recommended_price: string
+  source: string
+}

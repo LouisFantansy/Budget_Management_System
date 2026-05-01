@@ -29,6 +29,11 @@ function updateDynamicField(line: Parameters<typeof store.updateDynamicField>[0]
   const target = event.target as HTMLInputElement
   store.updateDynamicField(line, field, target.value)
 }
+
+function recommendation(lineId: string | undefined) {
+  if (!lineId) return null
+  return store.recommendations[lineId]?.[0] ?? null
+}
 </script>
 
 <template>
@@ -75,6 +80,7 @@ function updateDynamicField(line: Parameters<typeof store.updateDynamicField>[0]
         <span>Category</span>
         <span>Project</span>
         <span>单价</span>
+        <span>推荐价</span>
         <span>总数量</span>
         <span>总金额</span>
         <span v-for="field in store.templateFields" :key="field.id">
@@ -93,7 +99,23 @@ function updateDynamicField(line: Parameters<typeof store.updateDynamicField>[0]
         <strong>{{ line.description }}</strong>
         <span>{{ line.category }}</span>
         <span>{{ line.project }}</span>
-        <span>参考价</span>
+        <span>{{ line.unitPrice ?? '0.00' }}</span>
+        <span class="recommendation-cell">
+          <button class="text-button" type="button" :disabled="store.actionLoading" @click="store.loadRecommendations(line)">
+            查询
+          </button>
+          <template v-if="recommendation(line.id)">
+            <strong>{{ recommendation(line.id)?.recommended_price }}</strong>
+            <button
+              class="text-button"
+              type="button"
+              :disabled="store.actionLoading || line.versionId !== store.activeDraftVersionId"
+              @click="store.applyRecommendedPrice(line, recommendation(line.id)!.recommended_price)"
+            >
+              带入
+            </button>
+          </template>
+        </span>
         <span>12</span>
         <strong>{{ line.amount }}</strong>
         <span v-for="field in store.templateFields" :key="`${line.id}-${field.id}`" class="dynamic-cell">
