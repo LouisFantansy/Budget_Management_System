@@ -4,6 +4,8 @@ from rest_framework.test import APITestCase
 
 from accounts.models import RoleAssignment, User
 from budget_cycles.models import BudgetCycle
+from budgets.models import BudgetBook, BudgetLine, BudgetVersion
+from orgs.models import Department
 
 from .models import BudgetTemplate, TemplateField
 
@@ -96,3 +98,30 @@ class TemplateFieldAPITests(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
         self.assertFalse(TemplateField.objects.filter(id=field.id).exists())
+
+    def test_cannot_delete_template_field_when_budget_lines_still_use_it(self):
+        field = TemplateField.objects.create(
+            template=self.template,
+            code='purchase_reason',
+            label='采购原因',
+            data_type=TemplateField.DataType.TEXT,
+        )
+        department = Department.objects.create(name='Arch', code='Arch-TF', level=Department.Level.SECONDARY)
+        book = BudgetBook.objects.create(
+            cycle=self.cycle,
+            department=department,
+            expense_type=BudgetBook.ExpenseType.OPEX,
+            template=self.template,
+        )
+        version = BudgetVersion.objects.create(book=book, status=BudgetVersion.Status.DRAFT)
+        BudgetLine.objects.create(
+            version=version,
+            department=department,
+            description='使用模板字段的预算行',
+            dynamic_data={'purchase_reason': '扩容'},
+        )
+
+        response = self.client.delete(reverse('templatefield-detail', args=[field.id]))
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertTrue(TemplateField.objects.filter(id=field.id).exists())
