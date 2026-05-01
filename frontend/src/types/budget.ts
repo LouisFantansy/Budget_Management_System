@@ -24,6 +24,12 @@ export interface ApprovalItem {
   versionContext: VersionContext
   amount: string
   due: string
+  diffSummary?: {
+    added: number
+    deleted: number
+    modified: number
+    total_changes: number
+  } | null
 }
 
 export interface BudgetLinePreview {
@@ -92,6 +98,12 @@ export interface ApiApprovalRequest {
   title: string
   department: string
   status: string
+  diff_summary?: {
+    added: number
+    deleted: number
+    modified: number
+    total_changes: number
+  } | null
   dashboard_context: {
     version_context?: VersionContext
   }

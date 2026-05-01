@@ -33,10 +33,15 @@ onMounted(() => {
         <strong>{{ item.amount }}</strong>
         <span>{{ item.versionContext === 'submitted_version' ? '本次送审版本' : '当前 Draft' }}</span>
       </div>
+      <div v-if="item.diffSummary" class="diff-summary">
+        <span>新增 {{ item.diffSummary.added }}</span>
+        <span>删除 {{ item.diffSummary.deleted }}</span>
+        <span>修改 {{ item.diffSummary.modified }}</span>
+      </div>
       <div class="button-group">
         <button class="secondary-button" type="button">
           <GitCompareArrows :size="17" />
-          查看差异
+          {{ item.diffSummary ? `${item.diffSummary.total_changes} 项变更` : '查看差异' }}
         </button>
         <button
           class="secondary-button danger"

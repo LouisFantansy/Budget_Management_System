@@ -153,6 +153,7 @@ export const useWorkbenchStore = defineStore('workbench', {
           versionContext: item.dashboard_context.version_context ?? 'submitted_version',
           amount: '待审批',
           due: item.status === 'pending' ? '待处理' : item.status,
+          diffSummary: item.diff_summary ?? null,
         }))
 
         const versionIds = books.results
