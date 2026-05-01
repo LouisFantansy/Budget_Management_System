@@ -36,10 +36,29 @@ onMounted(() => {
 <template>
   <section class="page-head">
     <div>
-      <p class="eyebrow">Latest Approved</p>
+      <p class="eyebrow">{{ store.versionContext === 'current_draft' ? 'Current Draft' : 'Latest Approved' }}</p>
       <h1>预算看板</h1>
     </div>
-    <button class="context-pill" type="button">切换版本口径</button>
+    <div class="button-group">
+      <button
+        class="context-pill"
+        type="button"
+        :class="{ active: store.versionContext === 'latest_approved' }"
+        :disabled="store.loading"
+        @click="store.loadBudgetOverview('latest_approved')"
+      >
+        Latest Approved
+      </button>
+      <button
+        class="context-pill"
+        type="button"
+        :class="{ active: store.versionContext === 'current_draft' }"
+        :disabled="store.loading"
+        @click="store.loadBudgetOverview('current_draft')"
+      >
+        Current Draft
+      </button>
+    </div>
   </section>
 
   <p v-if="store.error" class="error-banner">{{ store.error }}</p>

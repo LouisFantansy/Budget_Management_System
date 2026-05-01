@@ -348,6 +348,7 @@ export const useWorkbenchStore = defineStore('workbench', {
       this.loading = true
       this.error = ''
       try {
+        this.versionContext = context
         this.budgetOverview = await apiGet<ApiBudgetOverview>(`/dashboard-configs/budget-overview/?version_context=${context}`)
       } catch (error) {
         this.error = error instanceof Error ? error.message : '加载预算看板失败'

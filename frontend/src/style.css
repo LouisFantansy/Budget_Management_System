@@ -255,6 +255,12 @@ button:disabled {
   background: rgba(255, 255, 255, 0.82);
 }
 
+.context-pill.active {
+  color: #ffffff;
+  border-color: rgba(10, 132, 255, 0.8);
+  background: var(--blue);
+}
+
 .primary-button {
   padding: 0 14px;
   color: #ffffff;
