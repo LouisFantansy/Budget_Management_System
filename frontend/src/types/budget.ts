@@ -164,3 +164,23 @@ export interface ApiUser {
   email: string
   primary_department: string | null
 }
+
+export interface ApiNamedMasterData {
+  id: string
+  code: string
+  name: string
+  is_active: boolean
+  sort_order: number
+}
+
+export interface ApiCategory extends ApiNamedMasterData {
+  level: 'category' | 'l1' | 'l2'
+  parent: string | null
+}
+
+export interface ApiProject extends ApiNamedMasterData {
+  project_category: string | null
+  product_line: string | null
+}
+
+export type MasterDataKind = 'categories' | 'projects' | 'vendors' | 'regions'

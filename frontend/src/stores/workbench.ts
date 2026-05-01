@@ -7,12 +7,16 @@ import type {
   ApiBudgetOverview,
   ApiBudgetTemplate,
   ApiBudgetVersion,
+  ApiCategory,
   ApiTemplateField,
   ApiUser,
+  ApiNamedMasterData,
+  ApiProject,
   ApiVersionDiff,
   ApprovalItem,
   BudgetLinePreview,
   BudgetTask,
+  MasterDataKind,
   SummaryStat,
   VersionContext,
 } from '../types/budget'
@@ -71,6 +75,17 @@ export const useWorkbenchStore = defineStore('workbench', {
       label: '',
       dataType: 'text' as ApiTemplateField['data_type'],
       required: false,
+    },
+    masterDataKind: 'categories' as MasterDataKind,
+    masterDataDraft: {
+      code: '',
+      name: '',
+    },
+    masterData: {
+      categories: [] as ApiCategory[],
+      projects: [] as ApiProject[],
+      vendors: [] as ApiNamedMasterData[],
+      regions: [] as ApiNamedMasterData[],
     },
     fieldErrors: {} as Record<string, string>,
     cycleName: '2027 年度预算编制',
@@ -439,6 +454,51 @@ export const useWorkbenchStore = defineStore('workbench', {
         const message = error instanceof Error ? error.message : '更新动态字段失败'
         this.error = message
         this.fieldErrors[`${line.id}:${field.code}`] = message
+      } finally {
+        this.actionLoading = false
+      }
+    },
+    async loadMasterData() {
+      this.loading = true
+      this.error = ''
+      try {
+        const [categories, projects, vendors, regions] = await Promise.all([
+          apiGet<PaginatedResponse<ApiCategory>>('/categories/'),
+          apiGet<PaginatedResponse<ApiProject>>('/projects/'),
+          apiGet<PaginatedResponse<ApiNamedMasterData>>('/vendors/'),
+          apiGet<PaginatedResponse<ApiNamedMasterData>>('/regions/'),
+        ])
+        this.masterData.categories = categories.results
+        this.masterData.projects = projects.results
+        this.masterData.vendors = vendors.results
+        this.masterData.regions = regions.results
+      } catch (error) {
+        this.error = error instanceof Error ? error.message : '加载主数据失败'
+      } finally {
+        this.loading = false
+      }
+    },
+    async createMasterData() {
+      const code = this.masterDataDraft.code.trim()
+      const name = this.masterDataDraft.name.trim()
+      if (!code || !name) {
+        this.error = '编码和名称必填'
+        return
+      }
+      this.actionLoading = true
+      this.error = ''
+      try {
+        await apiPost(`/${this.masterDataKind}/`, {
+          code,
+          name,
+          level: this.masterDataKind === 'categories' ? 'category' : undefined,
+          is_active: true,
+          sort_order: 0,
+        })
+        this.masterDataDraft = { code: '', name: '' }
+        await this.loadMasterData()
+      } catch (error) {
+        this.error = error instanceof Error ? error.message : '新增主数据失败'
       } finally {
         this.actionLoading = false
       }

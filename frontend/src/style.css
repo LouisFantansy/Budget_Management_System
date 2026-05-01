@@ -637,6 +637,28 @@ h2 {
   font-size: 13px;
 }
 
+.masterdata-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.masterdata-tabs .active {
+  color: #ffffff;
+  border-color: rgba(10, 132, 255, 0.8);
+  background: var(--blue);
+}
+
+.masterdata-form {
+  grid-template-columns: minmax(180px, 1fr) minmax(180px, 1fr);
+  margin-bottom: 14px;
+}
+
+.masterdata-row {
+  grid-template-columns: 160px minmax(220px, 1fr) 100px 80px;
+}
+
 .legend-list span {
   display: inline-flex;
   align-items: center;

@@ -7,6 +7,7 @@ import {
   CheckCircle2,
   ChevronDown,
   ClipboardList,
+  Database,
   FileSpreadsheet,
   GitBranch,
   LayoutDashboard,
@@ -22,6 +23,7 @@ const navItems = [
   { label: '预算编制', to: '/budget-editor', icon: FileSpreadsheet },
   { label: '审批中心', to: '/approvals', icon: CheckCircle2 },
   { label: '预算看板', to: '/dashboards', icon: BarChart3 },
+  { label: '主数据', to: '/masterdata', icon: Database },
   { label: '模板管理', to: '/templates', icon: Settings2 },
   { label: '版本分析', to: '/versions', icon: GitBranch },
 ]
