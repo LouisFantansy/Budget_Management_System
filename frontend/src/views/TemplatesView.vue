@@ -34,6 +34,22 @@ onMounted(() => {
         <span class="status-chip">{{ store.templates[0]?.status ?? 'Loading' }}</span>
       </div>
       <div class="field-list">
+        <div class="field-form">
+          <input v-model="store.templateFieldDraft.code" placeholder="字段编码，如 purchase_reason" />
+          <input v-model="store.templateFieldDraft.label" placeholder="显示名称，如 采购原因" />
+          <select v-model="store.templateFieldDraft.dataType">
+            <option value="text">文本</option>
+            <option value="number">数字</option>
+            <option value="money">金额</option>
+            <option value="date">日期</option>
+            <option value="boolean">布尔</option>
+            <option value="option">选项</option>
+          </select>
+          <label>
+            <input v-model="store.templateFieldDraft.required" type="checkbox" />
+            必填
+          </label>
+        </div>
         <div v-for="field in store.templateFields" :key="field.id">
           <ListChecks :size="16" />
           <span>{{ field.label }}</span>

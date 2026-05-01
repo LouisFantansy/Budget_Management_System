@@ -60,6 +60,12 @@ export const useWorkbenchStore = defineStore('workbench', {
     budgetOverview: null as ApiBudgetOverview | null,
     templateFields: [] as ApiTemplateField[],
     templates: [] as ApiBudgetTemplate[],
+    templateFieldDraft: {
+      code: '',
+      label: '',
+      dataType: 'text' as ApiTemplateField['data_type'],
+      required: false,
+    },
     fieldErrors: {} as Record<string, string>,
     cycleName: '2027 年度预算编制',
     versionContext: 'latest_approved' as VersionContext,
@@ -302,20 +308,27 @@ export const useWorkbenchStore = defineStore('workbench', {
         this.error = '当前没有可编辑模板'
         return
       }
+      const code = this.templateFieldDraft.code.trim()
+      const label = this.templateFieldDraft.label.trim()
+      if (!code || !label) {
+        this.error = '字段编码和显示名称必填'
+        return
+      }
       this.actionLoading = true
       this.error = ''
       try {
         const nextOrder = Math.max(0, ...this.templateFields.map((field) => field.order)) + 10
         await apiPost('/template-fields/', {
           template: this.activeTemplateId,
-          code: `custom_field_${Date.now()}`,
-          label: '新增字段',
-          data_type: 'text',
-          input_type: 'text',
-          required: false,
+          code,
+          label,
+          data_type: this.templateFieldDraft.dataType,
+          input_type: inputTypeForDataType(this.templateFieldDraft.dataType),
+          required: this.templateFieldDraft.required,
           order: nextOrder,
           width: 160,
         })
+        this.templateFieldDraft = { code: '', label: '', dataType: 'text', required: false }
         await this.loadTemplateFields()
       } catch (error) {
         this.error = error instanceof Error ? error.message : '新增模板字段失败'
@@ -376,4 +389,10 @@ function normalizeDynamicValue(field: ApiTemplateField, value: unknown) {
   if (field.data_type === 'boolean') return Boolean(value)
   if (value === null || value === undefined) return ''
   return String(value)
+}
+
+function inputTypeForDataType(dataType: ApiTemplateField['data_type']) {
+  if (dataType === 'money' || dataType === 'number') return 'number'
+  if (dataType === 'date') return 'date'
+  return 'text'
 }

@@ -670,6 +670,33 @@ h2 {
   gap: 10px;
 }
 
+.field-list .field-form {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(160px, 0.9fr) 140px 90px;
+  gap: 10px;
+  align-items: center;
+  border-style: dashed;
+  padding: 10px;
+}
+
+.field-form input,
+.field-form select {
+  height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 0 9px;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.88);
+}
+
+.field-form label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
 .field-list em {
   margin-left: auto;
   color: var(--quiet);
