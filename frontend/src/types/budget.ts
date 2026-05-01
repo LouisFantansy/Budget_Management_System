@@ -77,6 +77,14 @@ export interface ApiTemplateField {
   width: number
 }
 
+export interface ApiBudgetTemplate {
+  id: string
+  name: string
+  expense_type: 'opex' | 'capex' | 'special'
+  schema_version: number
+  status: string
+}
+
 export interface ApiApprovalRequest {
   id: string
   title: string

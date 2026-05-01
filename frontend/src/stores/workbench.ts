@@ -5,6 +5,7 @@ import type {
   ApiBudgetBook,
   ApiBudgetLine,
   ApiBudgetOverview,
+  ApiBudgetTemplate,
   ApiBudgetVersion,
   ApiTemplateField,
   ApiVersionDiff,
@@ -58,6 +59,7 @@ export const useWorkbenchStore = defineStore('workbench', {
     versionDiff: null as ApiVersionDiff | null,
     budgetOverview: null as ApiBudgetOverview | null,
     templateFields: [] as ApiTemplateField[],
+    templates: [] as ApiBudgetTemplate[],
     fieldErrors: {} as Record<string, string>,
     cycleName: '2027 年度预算编制',
     versionContext: 'latest_approved' as VersionContext,
@@ -280,6 +282,46 @@ export const useWorkbenchStore = defineStore('workbench', {
       }
       const fields = await apiGet<PaginatedResponse<ApiTemplateField>>(`/template-fields/?template=${this.activeTemplateId}`)
       this.templateFields = fields.results.sort((left, right) => left.order - right.order)
+    },
+    async loadTemplates() {
+      this.loading = true
+      this.error = ''
+      try {
+        const templates = await apiGet<PaginatedResponse<ApiBudgetTemplate>>('/budget-templates/')
+        this.templates = templates.results
+        this.activeTemplateId = this.activeTemplateId || templates.results[0]?.id || ''
+        await this.loadTemplateFields()
+      } catch (error) {
+        this.error = error instanceof Error ? error.message : '加载模板失败'
+      } finally {
+        this.loading = false
+      }
+    },
+    async createTemplateField() {
+      if (!this.activeTemplateId) {
+        this.error = '当前没有可编辑模板'
+        return
+      }
+      this.actionLoading = true
+      this.error = ''
+      try {
+        const nextOrder = Math.max(0, ...this.templateFields.map((field) => field.order)) + 10
+        await apiPost('/template-fields/', {
+          template: this.activeTemplateId,
+          code: `custom_field_${Date.now()}`,
+          label: '新增字段',
+          data_type: 'text',
+          input_type: 'text',
+          required: false,
+          order: nextOrder,
+          width: 160,
+        })
+        await this.loadTemplateFields()
+      } catch (error) {
+        this.error = error instanceof Error ? error.message : '新增模板字段失败'
+      } finally {
+        this.actionLoading = false
+      }
     },
     defaultDynamicData() {
       return Object.fromEntries(
