@@ -403,6 +403,73 @@ h2 {
   white-space: normal;
 }
 
+.detail-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.detail-card,
+.detail-section {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.detail-card {
+  min-height: 92px;
+  padding: 14px;
+  display: grid;
+  align-content: space-between;
+  gap: 10px;
+}
+
+.detail-card span,
+.detail-meta-list span,
+.plan-row span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.detail-card strong,
+.detail-meta-list strong,
+.plan-row strong {
+  color: var(--text);
+}
+
+.detail-columns {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.detail-section {
+  padding: 14px;
+}
+
+.detail-section h3 {
+  margin: 0 0 12px;
+  font-size: 15px;
+}
+
+.detail-meta-list,
+.plan-list {
+  display: grid;
+  gap: 10px;
+}
+
+.detail-meta-list div,
+.plan-row {
+  min-height: 52px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: rgba(248, 250, 252, 0.86);
+  display: grid;
+  gap: 4px;
+}
+
 .editor-row.has-row-error {
   background: rgba(214, 69, 69, 0.04);
 }
@@ -501,6 +568,12 @@ h2 {
   background: rgba(255, 255, 255, 0.74);
 }
 
+.task-tail {
+  display: grid;
+  justify-items: end;
+  gap: 4px;
+}
+
 .status-chip,
 .context-badge,
 .source-pill {
@@ -552,6 +625,13 @@ h2 {
   overflow-x: auto;
 }
 
+.editor-empty {
+  padding: 16px 14px;
+  color: var(--muted);
+  font-size: 14px;
+  border-top: 1px solid var(--line);
+}
+
 .table-row,
 .editor-row {
   display: grid;
@@ -569,7 +649,18 @@ h2 {
 }
 
 .editor-row {
-  grid-template-columns: 110px minmax(230px, 1.4fr) 120px 130px 90px 90px 120px repeat(var(--dynamic-columns, 0), minmax(120px, 160px)) 110px 96px;
+  grid-template-columns:
+    110px
+    minmax(230px, 1.4fr)
+    120px
+    130px
+    repeat(var(--source-columns, 0), 110px)
+    90px
+    90px
+    120px
+    repeat(var(--dynamic-columns, 0), minmax(120px, 160px))
+    110px
+    96px;
   min-width: max-content;
 }
 

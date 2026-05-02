@@ -12,10 +12,19 @@ export interface SummaryStat {
 export interface BudgetTask {
   bookId?: string
   currentDraftId?: string | null
+  departmentId?: string
+  sourceType?: string
+  templateId?: string
   department: string
   owner: string
   status: string
   version: string
+  amount: string
+}
+
+export interface BudgetMonthlyPlanPreview {
+  month: number
+  quantity: string
   amount: string
 }
 
@@ -36,10 +45,17 @@ export interface ApprovalItem {
 
 export interface BudgetLinePreview {
   id?: string
+  lineNo?: number
   versionId?: string
   departmentId?: string
+  editableBySecondary?: boolean
+  sourceDepartmentCode?: string
+  adminAnnotations?: Record<string, unknown>
+  monthlyPlans?: BudgetMonthlyPlanPreview[]
   dynamicData?: Record<string, unknown>
   unitPrice?: string
+  totalQuantity?: string
+  totalAmount?: string
   budgetNo: string
   description: string
   category: string
@@ -64,16 +80,20 @@ export interface ApiBudgetBook {
 export interface ApiBudgetLine {
   id: string
   version: string
+  line_no: number
   budget_no: string
   description: string
   category: string | null
   project: string | null
   department: string
   unit_price: string
+  total_quantity: string
   total_amount: string
   dynamic_data: Record<string, unknown>
+  admin_annotations: Record<string, unknown>
   source_ref_type: string
   editable_by_secondary: boolean
+  monthly_plans: BudgetMonthlyPlanPreview[]
 }
 
 export interface ApiTemplateField {

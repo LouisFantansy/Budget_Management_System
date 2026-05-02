@@ -17,8 +17,8 @@ function dynamicValue(line: { dynamicData?: Record<string, unknown> }, code: str
   return String(value)
 }
 
-function isEditable(line: { versionId?: string; locked: boolean }) {
-  return !line.locked && line.versionId === store.activeDraftVersionId
+function isEditable(line: Parameters<typeof store.canEditLine>[0]) {
+  return store.canEditLine(line)
 }
 
 function fieldError(lineId: string | undefined, code: string) {
@@ -42,6 +42,29 @@ function lineError(lineId: string | undefined) {
 }
 
 const latestImportSummary = computed(() => store.latestImportJob?.summary.message ?? '')
+const isPrimaryConsolidated = computed(() => store.activeSourceType === 'primary_consolidated')
+const activeLines = computed(() => store.budgetLines.filter((line) => line.versionId === store.activeDraftVersionId))
+const selectedLine = computed(() => activeLines.value.find((line) => line.id === store.selectedLineId) ?? activeLines.value[0] ?? null)
+const totalActiveAmount = computed(() =>
+  activeLines.value.reduce((sum, line) => sum + Number(line.totalAmount ?? 0), 0).toFixed(2),
+)
+
+function openLineAction(line: (typeof store.budgetLines)[number]) {
+  if (isPrimaryConsolidated.value) {
+    store.selectLine(line.id)
+    return
+  }
+  store.renameLine(line)
+}
+
+function lineStateLabel(line: (typeof store.budgetLines)[number]) {
+  if (isPrimaryConsolidated.value) return '一级可修订'
+  return line.editableBySecondary === false ? '二级锁定' : '可编辑'
+}
+
+function lineStateLocked(line: (typeof store.budgetLines)[number]) {
+  return !isPrimaryConsolidated.value && line.editableBySecondary === false
+}
 </script>
 
 <template>
@@ -75,6 +98,113 @@ const latestImportSummary = computed(() => store.latestImportJob?.summary.messag
   </section>
 
   <p v-if="store.error" class="error-banner">{{ store.error }}</p>
+
+  <section class="panel">
+    <div class="panel-title">
+      <div>
+        <p class="eyebrow">Draft Context</p>
+        <h2>{{ isPrimaryConsolidated ? '一级总表工作区' : '部门预算工作区' }}</h2>
+      </div>
+    </div>
+    <div class="detail-grid">
+      <div class="detail-card">
+        <span>当前预算表</span>
+        <strong>{{ isPrimaryConsolidated ? 'SS 一级总表' : '部门 Draft' }}</strong>
+      </div>
+      <div class="detail-card">
+        <span>来源类型</span>
+        <strong>{{ isPrimaryConsolidated ? '审批版汇总' : '部门自编' }}</strong>
+      </div>
+      <div class="detail-card">
+        <span>当前条目数</span>
+        <strong>{{ activeLines.length }}</strong>
+      </div>
+      <div class="detail-card">
+        <span>当前总金额</span>
+        <strong>¥ {{ totalActiveAmount }}</strong>
+      </div>
+    </div>
+  </section>
+
+  <section v-if="isPrimaryConsolidated && selectedLine" class="panel">
+    <div class="panel-title">
+      <div>
+        <p class="eyebrow">Line Inspector</p>
+        <h2>汇总条目详情</h2>
+      </div>
+      <span class="context-badge">当前选中 {{ selectedLine.budgetNo }}</span>
+    </div>
+    <div class="detail-grid">
+      <div class="detail-card">
+        <span>来源部门</span>
+        <strong>{{ selectedLine.sourceDepartmentCode ?? '-' }}</strong>
+      </div>
+      <div class="detail-card">
+        <span>来源预算表</span>
+        <strong>{{ String(selectedLine.adminAnnotations?.source_book_id ?? '-') }}</strong>
+      </div>
+      <div class="detail-card">
+        <span>来源版本</span>
+        <strong>{{ String(selectedLine.adminAnnotations?.source_version_id ?? '-') }}</strong>
+      </div>
+      <div class="detail-card">
+        <span>来源类型</span>
+        <strong>{{ selectedLine.source }}</strong>
+      </div>
+    </div>
+    <div class="detail-columns">
+      <article class="detail-section">
+        <h3>条目摘要</h3>
+        <div class="detail-meta-list">
+          <div>
+            <span>预算编号</span>
+            <strong>{{ selectedLine.budgetNo }}</strong>
+          </div>
+          <div>
+            <span>条目描述</span>
+            <strong>{{ selectedLine.description }}</strong>
+          </div>
+          <div>
+            <span>Category</span>
+            <strong>{{ selectedLine.category }}</strong>
+          </div>
+          <div>
+            <span>Project</span>
+            <strong>{{ selectedLine.project }}</strong>
+          </div>
+          <div>
+            <span>单价</span>
+            <strong>{{ selectedLine.unitPrice ?? '0.00' }}</strong>
+          </div>
+          <div>
+            <span>总金额</span>
+            <strong>{{ selectedLine.amount }}</strong>
+          </div>
+        </div>
+      </article>
+      <article class="detail-section">
+        <h3>月度计划</h3>
+        <div v-if="selectedLine.monthlyPlans?.length" class="plan-list">
+          <div v-for="plan in selectedLine.monthlyPlans" :key="`${selectedLine.id}-${plan.month}`" class="plan-row">
+            <span>{{ plan.month }} 月</span>
+            <strong>数量 {{ plan.quantity }}</strong>
+            <strong>金额 {{ plan.amount }}</strong>
+          </div>
+        </div>
+        <p v-else class="empty-note">当前条目没有月度计划。</p>
+      </article>
+      <article class="detail-section">
+        <h3>动态字段</h3>
+        <div v-if="store.templateFields.length" class="detail-meta-list">
+          <div v-for="field in store.templateFields" :key="`${selectedLine.id}-${field.id}-detail`">
+            <span>{{ field.label }}</span>
+            <strong>{{ dynamicValue(selectedLine, field.code) }}</strong>
+          </div>
+        </div>
+        <p v-else class="empty-note">当前模板没有动态字段。</p>
+      </article>
+    </div>
+  </section>
 
   <section v-if="showImportPanel" class="panel">
     <div class="panel-title">
@@ -127,18 +257,24 @@ const latestImportSummary = computed(() => store.latestImportJob?.summary.messag
   <section class="panel editor-panel">
     <div class="panel-title">
       <div>
-        <p class="eyebrow">平台软件部 · Draft #4</p>
-        <h2>当前修订</h2>
+        <p class="eyebrow">
+          {{ isPrimaryConsolidated ? 'SS · 一级总表 Draft' : '部门 Draft 预算编制' }}
+        </p>
+        <h2>{{ isPrimaryConsolidated ? '一级总表明细' : '当前修订' }}</h2>
       </div>
-      <span class="status-chip">待送审</span>
+      <span class="status-chip">{{ isPrimaryConsolidated ? '汇总视图' : '待送审' }}</span>
     </div>
 
     <div class="editor-table">
-      <div class="editor-row editor-head" :style="{ '--dynamic-columns': store.templateFields.length }">
+      <div
+        class="editor-row editor-head"
+        :style="{ '--dynamic-columns': store.templateFields.length, '--source-columns': isPrimaryConsolidated ? 1 : 0 }"
+      >
         <span>预算编号</span>
         <span>条目描述</span>
         <span>Category</span>
         <span>Project</span>
+        <span v-if="isPrimaryConsolidated">来源部门</span>
         <span>单价</span>
         <span>推荐价</span>
         <span>总数量</span>
@@ -149,17 +285,19 @@ const latestImportSummary = computed(() => store.latestImportJob?.summary.messag
         <span>状态</span>
         <span>操作</span>
       </div>
+      <p v-if="!activeLines.length" class="editor-empty">当前 Draft 暂无预算条目。</p>
       <div
-        v-for="line in store.budgetLines"
-        :key="line.budgetNo"
+        v-for="line in activeLines"
+        :key="line.id ?? line.budgetNo"
         class="editor-row"
         :class="{ 'has-row-error': !!lineError(line.id) }"
-        :style="{ '--dynamic-columns': store.templateFields.length }"
+        :style="{ '--dynamic-columns': store.templateFields.length, '--source-columns': isPrimaryConsolidated ? 1 : 0 }"
       >
         <span>{{ line.budgetNo }}</span>
         <strong>{{ line.description }}</strong>
         <span>{{ line.category }}</span>
         <span>{{ line.project }}</span>
+        <span v-if="isPrimaryConsolidated">{{ line.sourceDepartmentCode ?? '-' }}</span>
         <span>{{ line.unitPrice ?? '0.00' }}</span>
         <span class="recommendation-cell">
           <button class="text-button" type="button" :disabled="store.actionLoading" @click="store.loadRecommendations(line)">
@@ -170,14 +308,14 @@ const latestImportSummary = computed(() => store.latestImportJob?.summary.messag
             <button
               class="text-button"
               type="button"
-              :disabled="store.actionLoading || line.versionId !== store.activeDraftVersionId"
+              :disabled="store.actionLoading || !store.canEditLine(line)"
               @click="store.applyRecommendedPrice(line, recommendation(line.id)!.recommended_price)"
             >
               带入
             </button>
           </template>
         </span>
-        <span>12</span>
+        <span>{{ line.totalQuantity ?? '0.00' }}</span>
         <strong>{{ line.amount }}</strong>
         <span v-for="field in store.templateFields" :key="`${line.id}-${field.id}`" class="dynamic-cell">
           <input
@@ -191,17 +329,17 @@ const latestImportSummary = computed(() => store.latestImportJob?.summary.messag
           <template v-else>{{ dynamicValue(line, field.code) }}</template>
           <em v-if="fieldError(line.id, field.code)" class="field-error">{{ fieldError(line.id, field.code) }}</em>
         </span>
-        <span class="source-pill" :class="{ locked: line.locked }">
-          <LockKeyhole v-if="line.locked" :size="14" />
-          {{ line.locked ? '专题锁定' : '可编辑' }}
+        <span class="source-pill" :class="{ locked: lineStateLocked(line) }">
+          <LockKeyhole v-if="lineStateLocked(line)" :size="14" />
+          {{ lineStateLabel(line) }}
         </span>
         <button
           class="text-button"
           type="button"
-          :disabled="store.actionLoading || line.versionId !== store.activeDraftVersionId"
-          @click="store.renameLine(line)"
+          :disabled="store.actionLoading || (!isPrimaryConsolidated && !store.canEditLine(line))"
+          @click="openLineAction(line)"
         >
-          快速编辑
+          {{ isPrimaryConsolidated ? '查看条目' : '快速编辑' }}
         </button>
         <em v-if="lineError(line.id)" class="row-error">{{ lineError(line.id) }}</em>
       </div>

@@ -1,13 +1,21 @@
 <script setup lang="ts">
 import { onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { ArrowRight, CheckCircle2, Clock3, RefreshCw, ShieldCheck } from 'lucide-vue-next'
 import { useWorkbenchStore } from '../stores/workbench'
 
 const store = useWorkbenchStore()
+const router = useRouter()
 
 onMounted(() => {
   store.load()
 })
+
+async function openTaskDraft(task: (typeof store.tasks)[number]) {
+  const ready = await store.selectDraftContext(task)
+  if (!ready) return
+  router.push('/budget-editor')
+}
 </script>
 
 <template>
@@ -46,13 +54,27 @@ onMounted(() => {
       </div>
 
       <div class="task-list">
-        <div v-for="task in store.tasks" :key="task.department" class="task-row">
+        <div v-for="task in store.tasks" :key="task.bookId ?? task.department" class="task-row">
           <div>
             <strong>{{ task.department }}</strong>
-            <span>{{ task.owner }} · {{ task.version }}</span>
+            <span>
+              {{ task.owner }} · {{ task.version }}
+              <template v-if="task.sourceType === 'primary_consolidated'"> · 一级总表</template>
+            </span>
           </div>
           <span class="status-chip">{{ task.status }}</span>
-          <strong>{{ task.amount }}</strong>
+          <div class="task-tail">
+            <strong>{{ task.amount }}</strong>
+            <button
+              v-if="task.currentDraftId"
+              class="text-button"
+              type="button"
+              :disabled="store.actionLoading"
+              @click="openTaskDraft(task)"
+            >
+              进入明细
+            </button>
+          </div>
         </div>
       </div>
     </article>

@@ -50,6 +50,7 @@ class PrimaryConsolidatedPullAPITests(APITestCase):
         line = draft.lines.order_by('line_no').first()
         self.assertEqual(line.source_ref_type, 'budget_version')
         self.assertFalse(line.editable_by_secondary)
+        self.assertEqual(line.admin_annotations['source_department'], line.department.code)
         self.assertEqual(BudgetTask.objects.get(cycle=self.cycle, department=self.arch).status, BudgetTask.Status.PULLED_TO_PRIMARY)
         self.assertEqual(BudgetTask.objects.get(cycle=self.cycle, department=self.pve).status, BudgetTask.Status.PULLED_TO_PRIMARY)
 

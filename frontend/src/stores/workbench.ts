@@ -47,6 +47,7 @@ function sourceLabel(source: string) {
     ss_public: 'SS public',
     group_allocation: '集团分摊',
     primary_consolidated: '一级总表',
+    budget_version: '审批版拉取',
   }
   return labels[source] ?? source
 }
@@ -71,8 +72,11 @@ export const useWorkbenchStore = defineStore('workbench', {
       password: 'password',
     },
     activeDraftVersionId: '',
+    activeBookId: '',
     activeDraftDepartmentId: '',
+    activeSourceType: '',
     activeTemplateId: '',
+    selectedLineId: '',
     revisionSourceBookId: '',
     versionDiff: null as ApiVersionDiff | null,
     budgetOverview: null as ApiBudgetOverview | null,
@@ -176,6 +180,9 @@ export const useWorkbenchStore = defineStore('workbench', {
         this.tasks = books.results.map((book) => ({
           bookId: book.id,
           currentDraftId: book.current_draft,
+          departmentId: book.department,
+          sourceType: book.source_type,
+          templateId: book.template,
           department: departmentNames[book.department] ?? book.department,
           owner: book.status === 'approved' ? '已审批版本' : '预算管理员',
           status: book.status,
@@ -202,10 +209,20 @@ export const useWorkbenchStore = defineStore('workbench', {
         this.budgetLines = linePages.flatMap((page) =>
           page.results.map((line) => ({
             id: line.id,
+            lineNo: line.line_no,
             versionId: line.version,
             departmentId: line.department,
+            editableBySecondary: line.editable_by_secondary,
+            sourceDepartmentCode:
+              typeof line.admin_annotations?.source_department === 'string'
+                ? String(line.admin_annotations.source_department)
+                : undefined,
+            adminAnnotations: line.admin_annotations,
+            monthlyPlans: line.monthly_plans,
             dynamicData: line.dynamic_data,
             unitPrice: line.unit_price,
+            totalQuantity: line.total_quantity,
+            totalAmount: line.total_amount,
             budgetNo: line.budget_no,
             description: line.description,
             category: line.category ? categoryNames[line.category] ?? line.category : '-',
@@ -216,13 +233,16 @@ export const useWorkbenchStore = defineStore('workbench', {
             locked: !line.editable_by_secondary,
           })),
         )
-        const editableBook = books.results.find((book) => book.current_draft)
-        this.activeDraftVersionId = editableBook?.current_draft ?? ''
-        this.activeDraftDepartmentId = editableBook?.department ?? ''
-        this.activeTemplateId = editableBook?.template ?? books.results[0]?.template ?? ''
+        const activeBook =
+          books.results.find((book) => book.id === this.activeBookId) ??
+          books.results.find((book) => book.current_draft === this.activeDraftVersionId) ??
+          books.results.find((book) => book.current_draft) ??
+          books.results[0]
+        this.applyActiveBookContext(activeBook, books.results[0]?.template ?? '')
         this.revisionSourceBookId = books.results.find((book) => !book.current_draft && book.latest_approved_version)?.id ?? ''
         await this.loadTemplateFields()
         await this.loadImportJobs()
+        this.syncSelectedLine()
 
         const approvedLines = this.budgetLines.length
         const totalAmount = linePages
@@ -297,10 +317,17 @@ export const useWorkbenchStore = defineStore('workbench', {
       this.actionLoading = true
       this.error = ''
       try {
+        const nextLineNo =
+          Math.max(
+            0,
+            ...this.budgetLines
+              .filter((line) => line.versionId === this.activeDraftVersionId)
+              .map((line) => Number(line.lineNo ?? 0)),
+          ) + 1
         await apiPost('/budget-lines/', {
           version: this.activeDraftVersionId,
           department: this.activeDraftDepartmentId,
-          line_no: this.budgetLines.length + 1,
+          line_no: nextLineNo,
           budget_no: `DRAFT-${Date.now()}`,
           description: '新增预算条目',
           unit_price: '0.00',
@@ -368,6 +395,23 @@ export const useWorkbenchStore = defineStore('workbench', {
       } finally {
         this.actionLoading = false
       }
+    },
+    async selectDraftContext(task: BudgetTask) {
+      if (!task.currentDraftId || !task.bookId) {
+        this.error = '当前任务没有可查看的 Draft 版本'
+        return false
+      }
+      const selectedLine = this.budgetLines.find((line) => line.versionId === task.currentDraftId)
+      this.activeBookId = task.bookId
+      this.activeDraftVersionId = task.currentDraftId
+      this.activeDraftDepartmentId = task.departmentId ?? selectedLine?.departmentId ?? ''
+      this.activeSourceType = task.sourceType ?? ''
+      this.activeTemplateId = task.templateId ?? this.activeTemplateId
+      this.error = ''
+      await this.loadTemplateFields()
+      await this.loadImportJobs()
+      this.syncSelectedLine()
+      return true
     },
     async loadVersionDiff() {
       this.loading = true
@@ -629,8 +673,20 @@ export const useWorkbenchStore = defineStore('workbench', {
           .map((field) => [field.code, defaultValueForField(field)]),
       )
     },
+    selectLine(lineId?: string) {
+      this.selectedLineId = lineId ?? ''
+    },
+    canEditLine(line: BudgetLinePreview) {
+      if (!line.id || line.versionId !== this.activeDraftVersionId) {
+        return false
+      }
+      if (this.activeSourceType === 'primary_consolidated') {
+        return true
+      }
+      return line.editableBySecondary !== false
+    },
     async renameLine(line: BudgetLinePreview) {
-      if (!line.id || line.locked || line.versionId !== this.activeDraftVersionId) {
+      if (!this.canEditLine(line)) {
         this.error = '只能编辑当前 Draft 版本的预算条目'
         return
       }
@@ -648,7 +704,7 @@ export const useWorkbenchStore = defineStore('workbench', {
       }
     },
     async updateDynamicField(line: BudgetLinePreview, field: ApiTemplateField, value: unknown) {
-      if (!line.id || line.locked || line.versionId !== this.activeDraftVersionId) {
+      if (!this.canEditLine(line)) {
         this.error = '只能编辑当前 Draft 版本的动态字段'
         return
       }
@@ -681,7 +737,7 @@ export const useWorkbenchStore = defineStore('workbench', {
       }
     },
     async applyRecommendedPrice(line: BudgetLinePreview, price: string) {
-      if (!line.id || line.locked || line.versionId !== this.activeDraftVersionId) {
+      if (!this.canEditLine(line)) {
         this.error = '只能对当前 Draft 版本应用推荐价'
         return
       }
@@ -788,6 +844,20 @@ export const useWorkbenchStore = defineStore('workbench', {
           this.fieldErrors[`${lineId}:${fieldCode}`] = String(fieldMessage)
         })
       })
+    },
+    applyActiveBookContext(book: ApiBudgetBook | undefined, fallbackTemplateId = '') {
+      this.activeBookId = book?.id ?? ''
+      this.activeDraftVersionId = book?.current_draft ?? ''
+      this.activeDraftDepartmentId = book?.department ?? ''
+      this.activeSourceType = book?.source_type ?? ''
+      this.activeTemplateId = book?.template ?? fallbackTemplateId
+    },
+    syncSelectedLine() {
+      const activeLines = this.budgetLines.filter((line) => line.versionId === this.activeDraftVersionId)
+      if (activeLines.some((line) => line.id === this.selectedLineId)) {
+        return
+      }
+      this.selectedLineId = activeLines[0]?.id ?? ''
     },
   },
 })
