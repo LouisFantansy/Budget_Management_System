@@ -64,18 +64,33 @@ class DemandSheetAPITests(APITestCase):
             status=DemandTemplate.Status.ACTIVE,
             target_mode=DemandTemplate.TargetMode.SECONDARY,
             target_department=self.primary,
-            schema=[{'code': 'description', 'label': '需求描述'}, {'code': 'total_amount', 'label': '总金额'}],
+            schema=[
+                {'code': 'description', 'label': '需求描述', 'required': True},
+                {'code': 'project_name', 'label': '关联项目', 'data_type': 'option', 'input_type': 'project'},
+                {
+                    'code': 'unit_price',
+                    'label': '保密单价',
+                    'data_type': 'money',
+                    'input_type': 'number',
+                    'visible_rules': {'visible_to': ['primary']},
+                    'editable_rules': {'editable_by': ['primary']},
+                },
+                {'code': 'total_amount', 'label': '总金额', 'data_type': 'money', 'input_type': 'number', 'required': True},
+            ],
+            default_payload=[{'description': '默认专题需求', 'total_amount': '1000.00'}],
         )
 
-    def test_primary_admin_can_create_template_and_generate_secondary_special_lines(self):
+    def test_primary_admin_can_submit_confirm_and_generate_secondary_special_lines(self):
         self.client.force_authenticate(self.primary_admin)
         create_response = self.client.post(
             reverse('demandsheet-list'),
             {
                 'template': str(self.demand_template.id),
                 'target_department': str(self.arch.id),
+                'due_at': '2032-02-01T00:00:00Z',
                 'payload': [
                     {
+                        '_row_id': 'arch-001',
                         'budget_no': 'DEM-ARCH-001',
                         'description': '年度 IDE License 集采',
                         'total_amount': '860000.00',
@@ -90,9 +105,13 @@ class DemandSheetAPITests(APITestCase):
 
         self.assertEqual(create_response.status_code, status.HTTP_201_CREATED)
         sheet_id = create_response.data['id']
+        submit_response = self.client.post(reverse('demandsheet-submit', args=[sheet_id]), {}, format='json')
+        self.assertEqual(submit_response.status_code, status.HTTP_200_OK)
+        confirm_response = self.client.post(reverse('demandsheet-confirm', args=[sheet_id]), {}, format='json')
+        self.assertEqual(confirm_response.status_code, status.HTTP_200_OK)
         generate_response = self.client.post(
             reverse('demandsheet-generate-budget-lines', args=[sheet_id]),
-            {'confirm': True, 'force_rebuild': True},
+            {'force_rebuild': True},
             format='json',
         )
 
@@ -109,6 +128,8 @@ class DemandSheetAPITests(APITestCase):
         self.assertEqual(line.admin_annotations['source_department'], 'Arch')
         self.assertEqual(sheet.status, DemandSheet.Status.GENERATED)
         self.assertEqual(sheet.generated_line_count, 1)
+        self.assertEqual(sheet.generated_by, self.primary_admin)
+        self.assertTrue(sheet.generated_payload_hash)
         self.assertEqual(line.monthly_plans.count(), 2)
 
     def test_ss_public_template_generates_into_ss_public_book(self):
@@ -133,10 +154,12 @@ class DemandSheetAPITests(APITestCase):
             format='json',
         )
         self.assertEqual(sheet_response.status_code, status.HTTP_201_CREATED)
+        confirm_response = self.client.post(reverse('demandsheet-confirm', args=[sheet_response.data['id']]), {}, format='json')
+        self.assertEqual(confirm_response.status_code, status.HTTP_200_OK)
 
         generate_response = self.client.post(
             reverse('demandsheet-generate-budget-lines', args=[sheet_response.data['id']]),
-            {'confirm': True},
+            {},
             format='json',
         )
 
@@ -163,10 +186,12 @@ class DemandSheetAPITests(APITestCase):
             format='json',
         )
         self.assertEqual(create_response.status_code, status.HTTP_201_CREATED)
+        confirm_response = self.client.post(reverse('demandsheet-confirm', args=[create_response.data['id']]), {}, format='json')
+        self.assertEqual(confirm_response.status_code, status.HTTP_200_OK)
 
         generate_response = self.client.post(
             reverse('demandsheet-generate-budget-lines', args=[create_response.data['id']]),
-            {'confirm': True, 'force_rebuild': True},
+            {'force_rebuild': True},
             format='json',
         )
 
@@ -200,34 +225,32 @@ class DemandSheetAPITests(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
-    def test_secondary_owner_can_generate_only_own_department_sheet(self):
+    def test_secondary_owner_can_submit_own_department_sheet_but_cannot_confirm_or_generate(self):
         sheet = DemandSheet.objects.create(
             template=self.demand_template,
             target_department=self.arch,
             requested_by=self.primary_admin,
             payload=[{'description': '架构工具采购', 'total_amount': '8000.00'}],
+            schema_snapshot=self.demand_template.schema,
         )
 
         self.client.force_authenticate(self.arch_owner)
-        own_response = self.client.post(
-            reverse('demandsheet-generate-budget-lines', args=[sheet.id]),
-            {'confirm': True},
-            format='json',
-        )
-        self.assertEqual(own_response.status_code, status.HTTP_201_CREATED)
+        submit_response = self.client.post(reverse('demandsheet-submit', args=[sheet.id]), {}, format='json')
+        self.assertEqual(submit_response.status_code, status.HTTP_200_OK)
+        denied_confirm = self.client.post(reverse('demandsheet-confirm', args=[sheet.id]), {}, format='json')
+        self.assertEqual(denied_confirm.status_code, status.HTTP_403_FORBIDDEN)
+        denied_generate = self.client.post(reverse('demandsheet-generate-budget-lines', args=[sheet.id]), {}, format='json')
+        self.assertEqual(denied_generate.status_code, status.HTTP_403_FORBIDDEN)
 
         other_sheet = DemandSheet.objects.create(
             template=self.demand_template,
             target_department=self.pve,
             requested_by=self.primary_admin,
             payload=[{'description': 'PVE 工具采购', 'total_amount': '9000.00'}],
+            schema_snapshot=self.demand_template.schema,
         )
-        denied_response = self.client.post(
-            reverse('demandsheet-generate-budget-lines', args=[other_sheet.id]),
-            {'confirm': True},
-            format='json',
-        )
-        self.assertEqual(denied_response.status_code, status.HTTP_404_NOT_FOUND)
+        denied_submit = self.client.post(reverse('demandsheet-submit', args=[other_sheet.id]), {}, format='json')
+        self.assertEqual(denied_submit.status_code, status.HTTP_404_NOT_FOUND)
 
     def test_generate_rebuilds_same_sheet_lines_without_touching_other_sheets(self):
         other_template = DemandTemplate.objects.create(
@@ -244,23 +267,35 @@ class DemandSheetAPITests(APITestCase):
             target_department=self.arch,
             requested_by=self.primary_admin,
             payload=[{'budget_no': 'DEM-1', 'description': '第一次需求', 'total_amount': '1000.00'}],
+            schema_snapshot=self.demand_template.schema,
+            status=DemandSheet.Status.CONFIRMED,
         )
         second_sheet = DemandSheet.objects.create(
             template=other_template,
             target_department=self.arch,
             requested_by=self.primary_admin,
             payload=[{'budget_no': 'DEM-2', 'description': '第二次需求', 'total_amount': '2000.00'}],
+            schema_snapshot=other_template.schema,
+            status=DemandSheet.Status.CONFIRMED,
         )
-        response_one = self.client.post(reverse('demandsheet-generate-budget-lines', args=[first_sheet.id]), {'confirm': True}, format='json')
+        response_one = self.client.post(reverse('demandsheet-generate-budget-lines', args=[first_sheet.id]), {}, format='json')
         self.assertEqual(response_one.status_code, status.HTTP_201_CREATED)
-        response_two = self.client.post(reverse('demandsheet-generate-budget-lines', args=[second_sheet.id]), {'confirm': True, 'force_rebuild': False}, format='json')
+        response_two = self.client.post(reverse('demandsheet-generate-budget-lines', args=[second_sheet.id]), {'force_rebuild': False}, format='json')
         self.assertEqual(response_two.status_code, status.HTTP_201_CREATED)
 
-        first_sheet.payload = [{'budget_no': 'DEM-1B', 'description': '第一次需求更新', 'total_amount': '1800.00'}]
-        first_sheet.save(update_fields=['payload', 'updated_at'])
+        reopen_response = self.client.post(reverse('demandsheet-reopen', args=[first_sheet.id]), {}, format='json')
+        self.assertEqual(reopen_response.status_code, status.HTTP_200_OK)
+        patch_response = self.client.patch(
+            reverse('demandsheet-detail', args=[first_sheet.id]),
+            {'payload': [{'budget_no': 'DEM-1B', 'description': '第一次需求更新', 'total_amount': '1800.00'}]},
+            format='json',
+        )
+        self.assertEqual(patch_response.status_code, status.HTTP_200_OK)
+        confirm_response = self.client.post(reverse('demandsheet-confirm', args=[first_sheet.id]), {}, format='json')
+        self.assertEqual(confirm_response.status_code, status.HTTP_200_OK)
         rebuild_response = self.client.post(
             reverse('demandsheet-generate-budget-lines', args=[first_sheet.id]),
-            {'confirm': True, 'force_rebuild': True},
+            {'force_rebuild': True},
             format='json',
         )
         self.assertEqual(rebuild_response.status_code, status.HTTP_201_CREATED)
@@ -302,3 +337,67 @@ class DemandSheetAPITests(APITestCase):
         self.assertEqual(patch_response.status_code, status.HTTP_400_BAD_REQUEST)
         line.refresh_from_db()
         self.assertEqual(line.description, '锁定专题条目')
+
+    def test_sheet_create_uses_template_default_payload_and_schema_snapshot(self):
+        self.client.force_authenticate(self.primary_admin)
+        response = self.client.post(
+            reverse('demandsheet-list'),
+            {
+                'template': str(self.demand_template.id),
+                'target_department': str(self.arch.id),
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        sheet = DemandSheet.objects.get(id=response.data['id'])
+        self.assertEqual(sheet.status, DemandSheet.Status.DRAFT)
+        self.assertSetEqual(
+            {field['code'] for field in sheet.schema_snapshot},
+            {'budget_no', 'description', 'reason', 'unit_price', 'total_quantity', 'total_amount', 'project_name'},
+        )
+        self.assertEqual(sheet.payload[0]['description'], '默认专题需求')
+
+    def test_secondary_user_cannot_edit_confirmed_sheet_until_reopened(self):
+        sheet = DemandSheet.objects.create(
+            template=self.demand_template,
+            target_department=self.arch,
+            requested_by=self.primary_admin,
+            schema_snapshot=self.demand_template.schema,
+            payload=[{'_row_id': 'row-1', 'description': '原始需求', 'unit_price': '999.00', 'total_amount': '5000.00'}],
+            status=DemandSheet.Status.CONFIRMED,
+        )
+        self.client.force_authenticate(self.arch_owner)
+
+        patch_response = self.client.patch(
+            reverse('demandsheet-detail', args=[sheet.id]),
+            {'payload': [{'_row_id': 'row-1', 'description': '尝试直接修改', 'total_amount': '6000.00'}]},
+            format='json',
+        )
+
+        self.assertEqual(patch_response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_hidden_primary_only_fields_are_not_exposed_and_are_preserved_on_secondary_edit(self):
+        sheet = DemandSheet.objects.create(
+            template=self.demand_template,
+            target_department=self.arch,
+            requested_by=self.primary_admin,
+            schema_snapshot=self.demand_template.schema,
+            payload=[{'_row_id': 'row-1', 'description': '保密采购', 'unit_price': '200.00', 'total_amount': '1000.00'}],
+            status=DemandSheet.Status.DRAFT,
+        )
+        self.client.force_authenticate(self.arch_owner)
+
+        get_response = self.client.get(reverse('demandsheet-detail', args=[sheet.id]))
+        self.assertEqual(get_response.status_code, status.HTTP_200_OK)
+        self.assertNotIn('unit_price', get_response.data['payload'][0])
+
+        patch_response = self.client.patch(
+            reverse('demandsheet-detail', args=[sheet.id]),
+            {'payload': [{'_row_id': 'row-1', 'description': '保密采购更新', 'total_amount': '1200.00'}]},
+            format='json',
+        )
+        self.assertEqual(patch_response.status_code, status.HTTP_200_OK)
+        sheet.refresh_from_db()
+        self.assertEqual(sheet.payload[0]['unit_price'], '200.00')
+        self.assertEqual(sheet.payload[0]['description'], '保密采购更新')

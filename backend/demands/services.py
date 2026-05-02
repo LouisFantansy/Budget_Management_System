@@ -1,3 +1,4 @@
+from django.utils import timezone
 from decimal import Decimal, InvalidOperation
 
 from django.db import transaction
@@ -8,6 +9,7 @@ from budgets.models import BudgetBook, BudgetLine, BudgetMonthlyPlan, BudgetVers
 from orgs.models import Department
 
 from .models import DemandSheet, DemandTemplate
+from .schema import hash_demand_payload, normalize_demand_payload
 
 
 def _resolve_special_budget_template(cycle):
@@ -54,11 +56,84 @@ def _resolve_target_book_department(sheet: DemandSheet):
 
 
 @transaction.atomic
+def submit_demand_sheet(sheet: DemandSheet, requester=None, comment=''):
+    sheet = (
+        DemandSheet.objects.select_for_update()
+        .select_related('template', 'target_department')
+        .get(id=sheet.id)
+    )
+    if sheet.status != DemandSheet.Status.DRAFT:
+        raise ValidationError({'status': '只有草稿状态的专题需求表可以提交。'})
+    normalize_demand_payload(
+        sheet.payload,
+        sheet.schema_snapshot or sheet.template.schema,
+        user=None,
+        enforce_all_required=False,
+    )
+    now = timezone.now()
+    sheet.status = DemandSheet.Status.SUBMITTED
+    sheet.submitted_by = requester if requester and requester.is_authenticated else None
+    sheet.submitted_at = now
+    sheet.latest_comment = comment or sheet.latest_comment
+    sheet.save(update_fields=['status', 'submitted_by', 'submitted_at', 'latest_comment', 'updated_at'])
+    return sheet
+
+
+@transaction.atomic
+def confirm_demand_sheet(sheet: DemandSheet, requester=None, comment=''):
+    sheet = (
+        DemandSheet.objects.select_for_update()
+        .select_related('template', 'target_department')
+        .get(id=sheet.id)
+    )
+    if sheet.status not in {DemandSheet.Status.DRAFT, DemandSheet.Status.SUBMITTED}:
+        raise ValidationError({'status': '只有草稿或已提交状态的专题需求表可以确认。'})
+    normalize_demand_payload(
+        sheet.payload,
+        sheet.schema_snapshot or sheet.template.schema,
+        user=None,
+        enforce_all_required=True,
+    )
+    now = timezone.now()
+    sheet.status = DemandSheet.Status.CONFIRMED
+    sheet.confirmed_by = requester if requester and requester.is_authenticated else None
+    sheet.confirmed_at = now
+    sheet.latest_comment = comment or sheet.latest_comment
+    sheet.save(update_fields=['status', 'confirmed_by', 'confirmed_at', 'latest_comment', 'updated_at'])
+    return sheet
+
+
+@transaction.atomic
+def reopen_demand_sheet(sheet: DemandSheet, requester=None, comment=''):
+    sheet = (
+        DemandSheet.objects.select_for_update()
+        .select_related('template', 'target_department')
+        .get(id=sheet.id)
+    )
+    if sheet.status not in {DemandSheet.Status.SUBMITTED, DemandSheet.Status.CONFIRMED, DemandSheet.Status.GENERATED}:
+        raise ValidationError({'status': '当前状态不支持重新打开。'})
+    sheet.status = DemandSheet.Status.DRAFT
+    sheet.confirmed_by = None
+    sheet.confirmed_at = None
+    sheet.latest_comment = comment or sheet.latest_comment
+    sheet.save(update_fields=['status', 'confirmed_by', 'confirmed_at', 'latest_comment', 'updated_at'])
+    return sheet
+
+
+@transaction.atomic
 def generate_budget_lines_from_sheet(sheet: DemandSheet, requester=None, force_rebuild=True):
     sheet = (
         DemandSheet.objects.select_for_update()
         .select_related('template', 'template__cycle', 'target_department', 'requested_by')
         .get(id=sheet.id)
+    )
+    if sheet.status not in {DemandSheet.Status.CONFIRMED, DemandSheet.Status.GENERATED}:
+        raise ValidationError({'status': '生成预算前必须先确认专题需求表。'})
+    normalize_demand_payload(
+        sheet.payload,
+        sheet.schema_snapshot or sheet.template.schema,
+        user=None,
+        enforce_all_required=True,
     )
     rows = sheet.payload or []
     if not rows:
@@ -154,12 +229,18 @@ def generate_budget_lines_from_sheet(sheet: DemandSheet, requester=None, force_r
     sheet.generated_budget_book = book
     sheet.generated_budget_version = draft
     sheet.generated_line_count = len(created_lines)
+    sheet.generated_by = requester if requester and requester.is_authenticated else None
+    sheet.generated_at = timezone.now()
+    sheet.generated_payload_hash = hash_demand_payload(sheet.payload)
     sheet.save(
         update_fields=[
             'status',
             'generated_budget_book',
             'generated_budget_version',
             'generated_line_count',
+            'generated_by',
+            'generated_at',
+            'generated_payload_hash',
             'updated_at',
         ]
     )

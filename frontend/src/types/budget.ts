@@ -503,8 +503,41 @@ export interface ApiDemandTemplate {
   status: 'draft' | 'active' | 'archived'
   target_mode: 'secondary' | 'ss_public'
   target_department: string | null
-  schema: Array<Record<string, unknown>>
+  schema: ApiDemandSchemaField[]
   default_payload: Array<Record<string, unknown>>
+}
+
+export interface ApiDemandSchemaField {
+  code: string
+  label: string
+  data_type: 'text' | 'number' | 'money' | 'date' | 'boolean' | 'option' | 'json'
+  input_type: 'text' | 'number' | 'select' | 'multi_select' | 'date' | 'user' | 'department' | 'project'
+  required: boolean
+  order: number
+  width: number
+  frozen: boolean
+  option_source: string
+  visible_rules?: {
+    visible_to?: Array<'primary' | 'secondary'>
+  }
+  editable_rules?: {
+    editable_by?: Array<'primary' | 'secondary'>
+  }
+  approval_included?: boolean
+  dashboard_enabled?: boolean
+  import_aliases?: string[]
+  user_permissions?: {
+    visible: boolean
+    editable: boolean
+  }
+}
+
+export interface ApiDemandWorkflowActions {
+  can_edit_payload: boolean
+  can_submit: boolean
+  can_confirm: boolean
+  can_reopen: boolean
+  can_generate: boolean
 }
 
 export interface ApiDemandSheet {
@@ -512,13 +545,32 @@ export interface ApiDemandSheet {
   template: string
   template_name: string
   target_department: string
+  target_department_name?: string
   requested_by: number | null
-  status: 'draft' | 'confirmed' | 'generated'
+  requested_by_name?: string
+  status: 'draft' | 'submitted' | 'confirmed' | 'generated'
+  status_label?: string
+  due_at: string | null
+  schema_snapshot: ApiDemandSchemaField[]
   payload: Array<Record<string, unknown>>
+  submitted_by: number | null
+  submitted_by_name?: string
+  submitted_at: string | null
+  confirmed_by: number | null
+  confirmed_by_name?: string
+  confirmed_at: string | null
   generated_budget_book: string | null
   generated_budget_book_status?: string
   generated_budget_version: string | null
   generated_line_count: number
+  generated_by: number | null
+  generated_by_name?: string
+  generated_at: string | null
+  generated_payload_hash: string
+  latest_comment: string
+  sync_status: 'pending' | 'ready' | 'in_sync' | 'stale'
+  sync_status_label: string
+  workflow_actions: ApiDemandWorkflowActions
   created_at: string
   updated_at: string
 }

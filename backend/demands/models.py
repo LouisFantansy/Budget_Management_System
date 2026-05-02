@@ -44,6 +44,7 @@ class DemandTemplate(TimestampedModel):
 class DemandSheet(TimestampedModel):
     class Status(models.TextChoices):
         DRAFT = 'draft', '草稿'
+        SUBMITTED = 'submitted', '已提交'
         CONFIRMED = 'confirmed', '已确认'
         GENERATED = 'generated', '已生成预算'
 
@@ -61,7 +62,25 @@ class DemandSheet(TimestampedModel):
         related_name='requested_demand_sheets',
     )
     status = models.CharField(max_length=16, choices=Status.choices, default=Status.DRAFT)
+    due_at = models.DateTimeField(null=True, blank=True)
+    schema_snapshot = models.JSONField(default=list, blank=True)
     payload = models.JSONField(default=list, blank=True)
+    submitted_by = models.ForeignKey(
+        'accounts.User',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='submitted_demand_sheets',
+    )
+    submitted_at = models.DateTimeField(null=True, blank=True)
+    confirmed_by = models.ForeignKey(
+        'accounts.User',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='confirmed_demand_sheets',
+    )
+    confirmed_at = models.DateTimeField(null=True, blank=True)
     generated_budget_book = models.ForeignKey(
         'budgets.BudgetBook',
         on_delete=models.SET_NULL,
@@ -77,6 +96,16 @@ class DemandSheet(TimestampedModel):
         related_name='source_demand_sheets',
     )
     generated_line_count = models.PositiveIntegerField(default=0)
+    generated_by = models.ForeignKey(
+        'accounts.User',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='generated_demand_sheets',
+    )
+    generated_at = models.DateTimeField(null=True, blank=True)
+    generated_payload_hash = models.CharField(max_length=64, blank=True)
+    latest_comment = models.TextField(blank=True)
 
     class Meta:
         verbose_name = '专题需求表'

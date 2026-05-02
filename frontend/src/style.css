@@ -810,6 +810,91 @@ h2 {
   grid-template-columns: minmax(180px, 1fr) 120px 170px;
 }
 
+.demand-page-grid {
+  align-items: start;
+}
+
+.task-row-stack {
+  width: 100%;
+  text-align: left;
+  grid-template-columns: minmax(180px, 1fr);
+  padding: 14px 12px;
+}
+
+.task-row-active {
+  border-color: rgba(10, 132, 255, 0.32);
+  background: rgba(10, 132, 255, 0.06);
+}
+
+.demand-task-row {
+  cursor: pointer;
+}
+
+.demand-task-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.demand-template-fields,
+.demand-editor-list {
+  display: grid;
+  gap: 12px;
+}
+
+.demand-template-field,
+.demand-row-card {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 14px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.demand-template-field {
+  display: grid;
+  gap: 4px;
+}
+
+.demand-template-field span,
+.demand-row-title .eyebrow {
+  color: var(--muted);
+}
+
+.demand-actions {
+  margin: 18px 0 14px;
+}
+
+.demand-row-title {
+  margin-bottom: 12px;
+}
+
+.demand-row-grid {
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.demand-row-grid textarea {
+  min-height: 92px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 12px;
+  resize: vertical;
+  background: rgba(255, 255, 255, 0.86);
+  color: var(--text);
+}
+
+.checkbox-field {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 42px;
+}
+
+.danger-text {
+  color: #b24040;
+}
+
 .import-job-card {
   margin-top: 12px;
   border: 1px solid var(--line);

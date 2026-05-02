@@ -1,13 +1,13 @@
 from django.db.models import Q
 from rest_framework import decorators, response, viewsets
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import PermissionDenied, ValidationError
 
 from accounts.access import accessible_department_ids, can_edit_department_budget, is_global_budget_user
 from budgets.serializers import BudgetVersionSerializer
 
 from .models import DemandSheet, DemandTemplate
-from .serializers import DemandGenerateSerializer, DemandSheetSerializer, DemandTemplateSerializer
-from .services import generate_budget_lines_from_sheet
+from .serializers import DemandGenerateSerializer, DemandSheetSerializer, DemandTemplateSerializer, DemandWorkflowCommentSerializer
+from .services import confirm_demand_sheet, generate_budget_lines_from_sheet, reopen_demand_sheet, submit_demand_sheet
 
 
 class DemandTemplateViewSet(viewsets.ModelViewSet):
@@ -44,8 +44,11 @@ class DemandSheetViewSet(viewsets.ModelViewSet):
         'template__cycle',
         'target_department',
         'requested_by',
+        'submitted_by',
+        'confirmed_by',
         'generated_budget_book',
         'generated_budget_version',
+        'generated_by',
     ).all()
     serializer_class = DemandSheetSerializer
     filterset_fields = ['template', 'template__cycle', 'target_department', 'status']
@@ -75,13 +78,45 @@ class DemandSheetViewSet(viewsets.ModelViewSet):
             raise ValidationError({'permission': '没有权限删除该部门专题需求。'})
         super().perform_destroy(instance)
 
+    @decorators.action(detail=True, methods=['post'])
+    def submit(self, request, pk=None):
+        sheet = self.get_object()
+        if not (is_global_budget_user(request.user) or can_edit_department_budget(request.user, sheet.target_department_id)):
+            raise ValidationError({'permission': '没有权限提交该专题需求。'})
+        serializer = DemandWorkflowCommentSerializer(data=request.data or {})
+        serializer.is_valid(raise_exception=True)
+        sheet = submit_demand_sheet(sheet, requester=request.user, comment=serializer.validated_data.get('comment', '').strip())
+        return response.Response(self.get_serializer(sheet).data, status=200)
+
+    @decorators.action(detail=True, methods=['post'])
+    def confirm(self, request, pk=None):
+        sheet = self.get_object()
+        if not is_global_budget_user(request.user):
+            raise PermissionDenied('只有一级预算角色可以确认专题需求。')
+        serializer = DemandWorkflowCommentSerializer(data=request.data or {})
+        serializer.is_valid(raise_exception=True)
+        sheet = confirm_demand_sheet(sheet, requester=request.user, comment=serializer.validated_data.get('comment', '').strip())
+        return response.Response(self.get_serializer(sheet).data, status=200)
+
+    @decorators.action(detail=True, methods=['post'])
+    def reopen(self, request, pk=None):
+        sheet = self.get_object()
+        if not (is_global_budget_user(request.user) or can_edit_department_budget(request.user, sheet.target_department_id)):
+            raise ValidationError({'permission': '没有权限重新打开该专题需求。'})
+        serializer = DemandWorkflowCommentSerializer(data=request.data or {})
+        serializer.is_valid(raise_exception=True)
+        sheet = reopen_demand_sheet(sheet, requester=request.user, comment=serializer.validated_data.get('comment', '').strip())
+        return response.Response(self.get_serializer(sheet).data, status=200)
+
     @decorators.action(detail=True, methods=['post'], url_path='generate-budget-lines')
     def generate_budget_lines(self, request, pk=None):
         sheet = self.get_object()
-        if not (is_global_budget_user(request.user) or can_edit_department_budget(request.user, sheet.target_department_id)):
-            raise ValidationError({'permission': '没有权限生成该专题需求预算。'})
+        if not is_global_budget_user(request.user):
+            raise PermissionDenied('只有一级预算角色可以生成专题预算。')
         serializer = DemandGenerateSerializer(data=request.data or {})
         serializer.is_valid(raise_exception=True)
+        if serializer.validated_data.get('confirm') and sheet.status in {DemandSheet.Status.DRAFT, DemandSheet.Status.SUBMITTED}:
+            sheet = confirm_demand_sheet(sheet, requester=request.user)
         result = generate_budget_lines_from_sheet(
             sheet,
             requester=request.user,
