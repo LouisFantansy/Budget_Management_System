@@ -1,13 +1,15 @@
-from rest_framework import viewsets
+from rest_framework import decorators, response, viewsets
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.exceptions import ValidationError
 
 from accounts.access import can_manage_template_schema
+from budget_cycles.models import BudgetCycle
 from budgets.models import BudgetLine
 
 from .access import can_user_view_template_field
 from .models import BudgetTemplate, TemplateField
 from .serializers import BudgetTemplateSerializer, TemplateFieldSerializer
+from .services import bootstrap_cycle_templates, create_template_revision
 
 
 class BudgetTemplateViewSet(viewsets.ModelViewSet):
@@ -18,20 +20,64 @@ class BudgetTemplateViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         self._ensure_template_schema_access()
-        serializer.save()
+        template = serializer.save()
+        self._ensure_single_active_template(template)
 
     def perform_update(self, serializer):
         self._ensure_template_schema_access()
-        serializer.save()
+        template = serializer.save()
+        self._ensure_single_active_template(template)
 
     def perform_destroy(self, instance):
         self._ensure_template_schema_access()
         super().perform_destroy(instance)
 
+    @decorators.action(detail=True, methods=['post'], url_path='create-revision')
+    def create_revision(self, request, pk=None):
+        self._ensure_template_schema_access()
+        template = self.get_object()
+        revision = create_template_revision(template)
+        serializer = self.get_serializer(revision)
+        return response.Response(serializer.data, status=201)
+
+    @decorators.action(detail=False, methods=['post'], url_path='bootstrap-from-previous')
+    def bootstrap_from_previous(self, request):
+        self._ensure_template_schema_access()
+        cycle_id = request.data.get('cycle')
+        if not cycle_id:
+            raise ValidationError({'cycle': '必须指定目标预算周期。'})
+        try:
+            cycle = BudgetCycle.objects.get(id=cycle_id)
+        except BudgetCycle.DoesNotExist as error:
+            raise ValidationError({'cycle': '预算周期不存在。'}) from error
+        try:
+            previous_cycle, created = bootstrap_cycle_templates(cycle)
+        except ValueError as error:
+            raise ValidationError({'cycle': str(error)}) from error
+        serializer = self.get_serializer(created, many=True)
+        return response.Response(
+            {
+                'cycle': str(cycle.id),
+                'previous_cycle': str(previous_cycle.id),
+                'created_count': len(created),
+                'results': serializer.data,
+            },
+            status=201,
+        )
+
     def _ensure_template_schema_access(self):
         if can_manage_template_schema(self.request.user):
             return
         raise PermissionDenied('只有一级预算管理员可以维护预算模板。')
+
+    def _ensure_single_active_template(self, template):
+        if template.status != BudgetTemplate.Status.ACTIVE:
+            return
+        BudgetTemplate.objects.exclude(id=template.id).filter(
+            cycle=template.cycle,
+            expense_type=template.expense_type,
+            status=BudgetTemplate.Status.ACTIVE,
+        ).update(status=BudgetTemplate.Status.ARCHIVED)
 
 
 class TemplateFieldViewSet(viewsets.ModelViewSet):

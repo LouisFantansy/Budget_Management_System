@@ -18,12 +18,18 @@ def distribute_cycle_tasks(cycle, requester=None, due_at=None):
     if cycle.status in [BudgetCycle.Status.REVIEWING, BudgetCycle.Status.LOCKED, BudgetCycle.Status.ARCHIVED]:
         raise ValidationError({'status': '当前预算周期处于审核、锁定或归档状态，不能重新分发任务。'})
 
-    templates = list(
-        cycle.templates.filter(
-            status=BudgetTemplate.Status.ACTIVE,
-            expense_type__in=[BudgetTemplate.ExpenseType.OPEX, BudgetTemplate.ExpenseType.CAPEX],
-        ).order_by('expense_type', 'schema_version')
-    )
+    templates = []
+    for expense_type in [BudgetTemplate.ExpenseType.OPEX, BudgetTemplate.ExpenseType.CAPEX]:
+        template = (
+            cycle.templates.filter(
+                status=BudgetTemplate.Status.ACTIVE,
+                expense_type=expense_type,
+            )
+            .order_by('-schema_version', '-created_at')
+            .first()
+        )
+        if template:
+            templates.append(template)
     if not templates:
         raise ValidationError({'templates': '当前预算周期没有可分发的有效 OPEX/CAPEX 模板。'})
 

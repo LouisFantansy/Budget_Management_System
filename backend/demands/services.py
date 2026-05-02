@@ -17,7 +17,7 @@ def _resolve_special_budget_template(cycle):
             expense_type=BudgetTemplate.ExpenseType.SPECIAL,
             status=BudgetTemplate.Status.ACTIVE,
         )
-        .order_by('schema_version', 'created_at')
+        .order_by('-schema_version', '-created_at')
         .first()
     )
     if template:
@@ -28,7 +28,7 @@ def _resolve_special_budget_template(cycle):
             expense_type=BudgetTemplate.ExpenseType.OPEX,
             status=BudgetTemplate.Status.ACTIVE,
         )
-        .order_by('schema_version', 'created_at')
+        .order_by('-schema_version', '-created_at')
         .first()
     )
     if fallback:

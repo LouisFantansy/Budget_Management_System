@@ -60,6 +60,7 @@ class TemplateField(TimestampedModel):
     required = models.BooleanField(default=False)
     order = models.PositiveIntegerField(default=0)
     width = models.PositiveIntegerField(default=160)
+    frozen = models.BooleanField(default=False)
     option_source = models.CharField(max_length=128, blank=True)
     formula = models.CharField(max_length=512, blank=True)
     visible_rules = models.JSONField(default=dict, blank=True)

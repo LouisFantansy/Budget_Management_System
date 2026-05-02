@@ -140,6 +140,12 @@ export const useWorkbenchStore = defineStore('workbench', {
       required: false,
       primaryVisibleOnly: false,
       primaryEditableOnly: false,
+      width: 160,
+      frozen: false,
+      optionSource: '',
+      dashboardEnabled: false,
+      approvalIncluded: true,
+      importAliases: '',
     },
     masterDataKind: 'categories' as MasterDataKind,
     masterDataDraft: {
@@ -896,7 +902,15 @@ export const useWorkbenchStore = defineStore('workbench', {
           visible_rules: this.templateFieldDraft.primaryVisibleOnly ? { visible_to: ['primary'] } : {},
           editable_rules: this.templateFieldDraft.primaryEditableOnly ? { editable_by: ['primary'] } : {},
           order: nextOrder,
-          width: 160,
+          width: this.templateFieldDraft.width,
+          frozen: this.templateFieldDraft.frozen,
+          option_source: this.templateFieldDraft.optionSource.trim(),
+          approval_included: this.templateFieldDraft.approvalIncluded,
+          dashboard_enabled: this.templateFieldDraft.dashboardEnabled,
+          import_aliases: this.templateFieldDraft.importAliases
+            .split(/[\n,]/)
+            .map((item) => item.trim())
+            .filter(Boolean),
         })
         this.templateFieldDraft = {
           code: '',
@@ -907,6 +921,12 @@ export const useWorkbenchStore = defineStore('workbench', {
           required: false,
           primaryVisibleOnly: false,
           primaryEditableOnly: false,
+          width: 160,
+          frozen: false,
+          optionSource: '',
+          dashboardEnabled: false,
+          approvalIncluded: true,
+          importAliases: '',
         }
         await this.loadTemplateFields()
       } catch (error) {
@@ -917,7 +937,21 @@ export const useWorkbenchStore = defineStore('workbench', {
     },
     async updateTemplateField(
       field: ApiTemplateField,
-      patch: Partial<Pick<ApiTemplateField, 'label' | 'required' | 'visible_rules' | 'editable_rules'>>,
+      patch: Partial<
+        Pick<
+          ApiTemplateField,
+          | 'label'
+          | 'required'
+          | 'visible_rules'
+          | 'editable_rules'
+          | 'width'
+          | 'frozen'
+          | 'option_source'
+          | 'dashboard_enabled'
+          | 'approval_included'
+          | 'import_aliases'
+        >
+      >,
     ) {
       this.actionLoading = true
       this.error = ''
@@ -938,6 +972,36 @@ export const useWorkbenchStore = defineStore('workbench', {
         await this.loadTemplateFields()
       } catch (error) {
         this.error = error instanceof Error ? error.message : '删除模板字段失败'
+      } finally {
+        this.actionLoading = false
+      }
+    },
+    async createTemplateRevision() {
+      if (!this.activeTemplateId) {
+        this.error = '当前没有可复制模板'
+        return
+      }
+      this.actionLoading = true
+      this.error = ''
+      try {
+        const revision = await apiPost<ApiBudgetTemplate>(`/budget-templates/${this.activeTemplateId}/create-revision/`, {})
+        this.templates = [revision, ...this.templates.filter((item) => item.id !== revision.id)]
+        this.activeTemplateId = revision.id
+        await this.loadTemplateFields()
+      } catch (error) {
+        this.error = error instanceof Error ? error.message : '创建模板修订失败'
+      } finally {
+        this.actionLoading = false
+      }
+    },
+    async bootstrapTemplatesFromPrevious(cycleId: string) {
+      this.actionLoading = true
+      this.error = ''
+      try {
+        await apiPost('/budget-templates/bootstrap-from-previous/', { cycle: cycleId })
+        await this.loadTemplates()
+      } catch (error) {
+        this.error = error instanceof Error ? error.message : '复制上一周期模板失败'
       } finally {
         this.actionLoading = false
       }

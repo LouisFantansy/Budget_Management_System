@@ -8,6 +8,7 @@ const showImportPanel = ref(false)
 
 onMounted(() => {
   if (!store.budgetLines.length) store.load()
+  if (!store.masterData.projects.length) store.loadMasterData()
 })
 
 function dynamicValue(line: { dynamicData?: Record<string, unknown> }, code: string) {
@@ -27,7 +28,11 @@ function fieldError(lineId: string | undefined, code: string) {
 }
 
 function updateDynamicField(line: Parameters<typeof store.updateDynamicField>[0], field: Parameters<typeof store.updateDynamicField>[1], event: Event) {
-  const target = event.target as HTMLInputElement
+  const target = event.target as HTMLInputElement | HTMLSelectElement
+  if (field.data_type === 'boolean') {
+    store.updateDynamicField(line, field, (target as HTMLInputElement).checked)
+    return
+  }
   store.updateDynamicField(line, field, target.value)
 }
 
@@ -69,6 +74,21 @@ function lineStateLabel(line: (typeof store.budgetLines)[number]) {
 
 function lineStateLocked(line: (typeof store.budgetLines)[number]) {
   return !isPrimaryConsolidated.value && line.editableBySecondary === false
+}
+
+function optionValues(field: (typeof store.templateFields)[number]) {
+  const source = field.option_source?.trim() ?? ''
+  if (!source) return []
+  if (source === 'masterdata.projects') return store.masterData.projects.map((item) => item.name)
+  if (source === 'masterdata.project_categories') return store.masterData['project-categories'].map((item) => item.name)
+  if (source === 'masterdata.product_lines') return store.masterData['product-lines'].map((item) => item.name)
+  if (source === 'masterdata.categories') return store.masterData.categories.map((item) => item.name)
+  if (source === 'masterdata.vendors') return store.masterData.vendors.map((item) => item.name)
+  if (source === 'masterdata.regions') return store.masterData.regions.map((item) => item.name)
+  return source
+    .split('|')
+    .map((item) => item.trim())
+    .filter(Boolean)
 }
 
 function toggleSelectAll() {
@@ -378,7 +398,25 @@ function toggleSelectAll() {
         <strong>{{ line.amount }}</strong>
         <span v-for="field in visibleTemplateFields" :key="`${line.id}-${field.id}`" class="dynamic-cell">
           <input
-            v-if="isEditable(line) && store.canEditDynamicField(line, field)"
+            v-if="isEditable(line) && store.canEditDynamicField(line, field) && field.data_type === 'boolean'"
+            class="cell-input-checkbox"
+            type="checkbox"
+            :checked="dynamicValue(line, field.code) === 'true'"
+            :disabled="store.actionLoading"
+            @change="updateDynamicField(line, field, $event)"
+          />
+          <select
+            v-else-if="isEditable(line) && store.canEditDynamicField(line, field) && ['select', 'multi_select', 'project', 'department', 'user'].includes(field.input_type)"
+            class="cell-input"
+            :value="dynamicValue(line, field.code) === '-' ? '' : dynamicValue(line, field.code)"
+            :disabled="store.actionLoading"
+            @change="updateDynamicField(line, field, $event)"
+          >
+            <option value="">请选择</option>
+            <option v-for="option in optionValues(field)" :key="`${field.id}-${option}`" :value="option">{{ option }}</option>
+          </select>
+          <input
+            v-else-if="isEditable(line) && store.canEditDynamicField(line, field)"
             class="cell-input"
             :type="field.data_type === 'date' ? 'date' : field.data_type === 'number' || field.data_type === 'money' ? 'number' : 'text'"
             :value="dynamicValue(line, field.code) === '-' ? '' : dynamicValue(line, field.code)"

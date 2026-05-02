@@ -159,6 +159,8 @@ export interface ApiTemplateField {
   required: boolean
   order: number
   width: number
+  frozen: boolean
+  option_source: string
   formula: string
   visible_rules?: {
     visible_to?: Array<'primary' | 'secondary'>
@@ -168,6 +170,7 @@ export interface ApiTemplateField {
   }
   approval_included?: boolean
   dashboard_enabled?: boolean
+  import_aliases?: string[]
   user_permissions?: {
     visible: boolean
     editable: boolean
@@ -176,10 +179,14 @@ export interface ApiTemplateField {
 
 export interface ApiBudgetTemplate {
   id: string
+  cycle: string
   name: string
   expense_type: 'opex' | 'capex' | 'special'
   schema_version: number
   status: string
+  copied_from?: string | null
+  copied_from_name?: string | null
+  fields?: ApiTemplateField[]
 }
 
 export interface ApiApprovalRequest {

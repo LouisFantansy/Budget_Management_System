@@ -408,6 +408,11 @@ h2 {
   gap: 4px;
 }
 
+.cell-input-checkbox {
+  width: 18px;
+  height: 18px;
+}
+
 .cell-input {
   width: 100%;
   min-width: 110px;
@@ -1153,6 +1158,33 @@ h2 {
   padding: 10px;
 }
 
+.template-builder-form {
+  grid-template-columns: repeat(4, minmax(180px, 1fr));
+}
+
+.template-field-card {
+  min-height: 120px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.72);
+  display: grid;
+  gap: 12px;
+}
+
+.template-field-main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.template-field-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(120px, 1fr));
+  gap: 10px;
+  align-items: center;
+}
+
 .field-form input,
 .field-form select {
   height: 34px;
@@ -1259,6 +1291,11 @@ h2 {
   }
 
   .dashboard-config-form {
+    grid-template-columns: 1fr;
+  }
+
+  .template-builder-form,
+  .template-field-grid {
     grid-template-columns: 1fr;
   }
 

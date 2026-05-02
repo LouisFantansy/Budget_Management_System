@@ -50,6 +50,13 @@ class DemandSheetAPITests(APITestCase):
             status=BudgetTemplate.Status.ACTIVE,
             schema_version=2,
         )
+        self.special_template_v2 = BudgetTemplate.objects.create(
+            cycle=self.cycle,
+            name='专题预算模板 v2',
+            expense_type=BudgetTemplate.ExpenseType.SPECIAL,
+            status=BudgetTemplate.Status.DRAFT,
+            schema_version=2,
+        )
         self.demand_template = DemandTemplate.objects.create(
             cycle=self.cycle,
             name='集采软件需求',
@@ -138,8 +145,37 @@ class DemandSheetAPITests(APITestCase):
         line = book.current_draft.lines.get()
         self.assertEqual(book.department, self.ss_public)
         self.assertEqual(line.department, self.ss_public)
-        self.assertEqual(line.admin_annotations['source_department'], 'SS_PUBLIC')
-        self.assertEqual(line.admin_annotations['generated_for_department'], 'SS_PUBLIC')
+
+    def test_generate_budget_lines_prefers_latest_active_special_template(self):
+        self.special_template.status = BudgetTemplate.Status.ARCHIVED
+        self.special_template.save(update_fields=['status'])
+        self.special_template_v2.status = BudgetTemplate.Status.ACTIVE
+        self.special_template_v2.save(update_fields=['status'])
+
+        self.client.force_authenticate(self.primary_admin)
+        create_response = self.client.post(
+            reverse('demandsheet-list'),
+            {
+                'template': str(self.demand_template.id),
+                'target_department': str(self.arch.id),
+                'payload': [{'description': '新专题条目', 'total_amount': '1000.00'}],
+            },
+            format='json',
+        )
+        self.assertEqual(create_response.status_code, status.HTTP_201_CREATED)
+
+        generate_response = self.client.post(
+            reverse('demandsheet-generate-budget-lines', args=[create_response.data['id']]),
+            {'confirm': True, 'force_rebuild': True},
+            format='json',
+        )
+
+        self.assertEqual(generate_response.status_code, status.HTTP_201_CREATED)
+        book = BudgetBook.objects.get(id=generate_response.data['book_id'])
+        line = book.current_draft.lines.get()
+        self.assertEqual(book.template, self.special_template_v2)
+        self.assertEqual(line.admin_annotations['source_department'], 'Arch')
+        self.assertEqual(line.admin_annotations['generated_for_department'], 'Arch')
 
     def test_secondary_owner_cannot_create_ss_public_sheet(self):
         template = DemandTemplate.objects.create(

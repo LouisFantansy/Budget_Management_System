@@ -69,7 +69,7 @@ localStorage.setItem('budget_basic_auth', btoa('primary-admin:password'))
 - 审批中心：通过和退回，并区分二级审批、一级初审、一级终审阶段。
 - 预算看板：部门、Category、项目、项目类别、产品线、费用类型和月度聚合，支持部门聚焦、OPEX/CAPEX 过滤、保存视图、默认看板配置和条目下钻。
 - 主数据：支持 Project Category、Product Line、Project 关系维护。
-- 模板管理：字段查看、新增、重命名、必填切换和删除。
+- 模板管理：支持 schema 修订、复制上一周期模板，以及字段的宽度、冻结列、Dashboard 标签、审批快照、导入别名和下拉来源维护。
 - 版本分析：版本链路和 Diff。
 
 ## Testing Guide
@@ -91,12 +91,14 @@ npm run build
 
 ### 当前测试基线
 
-- `manage.py test`：110 通过
+- `manage.py test`：119 通过
 - `manage.py test budget_cycles budgets`：53 通过
 - `manage.py test approvals budgets budget_cycles notifications`：60 通过
 - `manage.py test budget_cycles`：12 通过
 - `manage.py test budget_cycles budgets approvals notifications`：65 通过
 - `manage.py test analytics budgets masterdata`：73 通过
+- `manage.py test budget_templates budgets masterdata`：72 通过
+- `manage.py test budget_templates budget_cycles demands`：38 通过
 - `manage.py test masterdata`：6 通过
 - `manage.py test analytics`：19 通过
 - `manage.py test budgets`：48 通过

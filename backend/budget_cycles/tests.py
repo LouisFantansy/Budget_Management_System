@@ -41,6 +41,13 @@ class BudgetTaskDistributionAPITests(APITestCase):
             expense_type=BudgetTemplate.ExpenseType.CAPEX,
             status=BudgetTemplate.Status.ACTIVE,
         )
+        self.opex_revision = BudgetTemplate.objects.create(
+            cycle=self.cycle,
+            name='OPEX 模板 V2',
+            expense_type=BudgetTemplate.ExpenseType.OPEX,
+            schema_version=2,
+            status=BudgetTemplate.Status.DRAFT,
+        )
 
     def test_primary_admin_can_distribute_cycle_tasks_and_create_books_and_drafts(self):
         self.client.force_authenticate(self.primary_admin)
@@ -81,6 +88,24 @@ class BudgetTaskDistributionAPITests(APITestCase):
             BudgetVersion.objects.filter(book__cycle=self.cycle, status=BudgetVersion.Status.DRAFT).count(),
             6,
         )
+
+    def test_distribution_prefers_latest_active_template_per_expense_type(self):
+        self.opex_template.refresh_from_db()
+        self.assertEqual(self.opex_template.status, BudgetTemplate.Status.ACTIVE)
+        self.opex_revision.status = BudgetTemplate.Status.ACTIVE
+        self.opex_revision.save(update_fields=['status'])
+
+        self.client.force_authenticate(self.primary_admin)
+        response = self.client.post(reverse('budgetcycle-distribute-tasks', args=[self.cycle.id]), {}, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        arch_book = BudgetBook.objects.get(
+            cycle=self.cycle,
+            department=self.arch,
+            expense_type=BudgetBook.ExpenseType.OPEX,
+            source_type=BudgetBook.SourceType.SELF_BUILT,
+        )
+        self.assertEqual(arch_book.template, self.opex_revision)
 
     def test_distribution_is_idempotent_for_existing_books_and_tasks(self):
         self.client.force_authenticate(self.primary_admin)
