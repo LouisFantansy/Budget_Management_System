@@ -53,6 +53,9 @@ class PrimaryConsolidatedPullAPITests(APITestCase):
         self.assertEqual(line.admin_annotations['source_department'], line.department.code)
         self.assertEqual(BudgetTask.objects.get(cycle=self.cycle, department=self.arch).status, BudgetTask.Status.PULLED_TO_PRIMARY)
         self.assertEqual(BudgetTask.objects.get(cycle=self.cycle, department=self.pve).status, BudgetTask.Status.PULLED_TO_PRIMARY)
+        sync_response = self.client.get(reverse('budgetbook-sync-status', args=[book.id]))
+        self.assertEqual(sync_response.status_code, status.HTTP_200_OK)
+        self.assertFalse(sync_response.data['has_updates'])
 
     def test_primary_user_can_import_group_allocation_and_pull_into_primary_book(self):
         upload_response = self.client.post(
@@ -124,6 +127,45 @@ class PrimaryConsolidatedPullAPITests(APITestCase):
         content = response.content.decode('utf-8')
         self.assertIn('预算部门', content)
         self.assertIn('集团云资源分摊', content)
+
+    def test_sync_status_reports_when_secondary_department_has_new_approved_version(self):
+        pull_response = self.client.post(
+            reverse('budgetcycle-pull-primary-consolidated', args=[self.cycle.id]),
+            {'expense_type': 'opex'},
+            format='json',
+        )
+        self.assertEqual(pull_response.status_code, status.HTTP_201_CREATED)
+        primary_book = BudgetBook.objects.get(
+            cycle=self.cycle,
+            department=self.primary,
+            expense_type=BudgetBook.ExpenseType.OPEX,
+            source_type=BudgetBook.SourceType.PRIMARY_CONSOLIDATED,
+        )
+
+        arch_book = BudgetBook.objects.get(
+            cycle=self.cycle,
+            department=self.arch,
+            expense_type=BudgetBook.ExpenseType.OPEX,
+            source_type=BudgetBook.SourceType.SELF_BUILT,
+        )
+        new_version = BudgetVersion.objects.create(book=arch_book, version_no=2, status=BudgetVersion.Status.APPROVED)
+        BudgetLine.objects.create(
+            version=new_version,
+            line_no=1,
+            budget_no='ARCH-002',
+            department=self.arch,
+            description='Arch new approved line',
+            total_amount='1500.00',
+        )
+        arch_book.latest_approved_version = new_version
+        arch_book.save(update_fields=['latest_approved_version', 'updated_at'])
+
+        sync_response = self.client.get(reverse('budgetbook-sync-status', args=[primary_book.id]))
+
+        self.assertEqual(sync_response.status_code, status.HTTP_200_OK)
+        self.assertTrue(sync_response.data['has_updates'])
+        self.assertEqual(sync_response.data['line_count'], 1)
+        self.assertEqual(sync_response.data['departments'][0]['department_code'], 'Arch')
 
     def _approved_book(self, department, budget_no, amount):
         book = BudgetBook.objects.create(

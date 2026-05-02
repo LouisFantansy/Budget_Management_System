@@ -345,3 +345,14 @@ export interface ApiAllocationUpload {
     errors: Record<string, unknown>
   }>
 }
+
+export interface ApiPrimarySyncStatus {
+  has_updates: boolean
+  line_count: number
+  departments: Array<{
+    department_code: string
+    department_name: string
+    current_source_version_id: string
+    latest_approved_version_id: string
+  }>
+}

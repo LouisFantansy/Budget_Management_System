@@ -37,6 +37,18 @@ async function openTaskDraft(task: (typeof store.tasks)[number]) {
   </section>
 
   <p v-if="store.error" class="error-banner">{{ store.error }}</p>
+  <section v-if="store.primarySyncStatus?.has_updates" class="panel sync-alert-panel">
+    <div class="panel-title">
+      <div>
+        <p class="eyebrow">Primary Sync Alert</p>
+        <h2>一级总表有待同步更新</h2>
+      </div>
+      <div class="context-badge">{{ store.primarySyncStatus.line_count }} 个部门有新 Approved</div>
+    </div>
+    <p class="empty-note">
+      {{ store.primarySyncStatus.departments.map((item) => item.department_name).join('、') }} 已产生新审批版本，建议重新拉取一级总表。
+    </p>
+  </section>
 
   <section class="stat-grid" aria-label="预算摘要">
     <article v-for="stat in store.summaryStats" :key="stat.label" class="stat-card" :class="`tone-${stat.tone}`">

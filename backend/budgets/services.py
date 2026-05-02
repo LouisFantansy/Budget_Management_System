@@ -300,6 +300,47 @@ def pull_primary_consolidated_book(cycle, expense_type, requester=None):
     return draft
 
 
+def primary_consolidated_sync_status(book: BudgetBook):
+    if book.source_type != BudgetBook.SourceType.PRIMARY_CONSOLIDATED:
+        raise ValidationError({'book': '仅一级总表支持同步状态检查。'})
+    if not book.current_draft_id:
+        return {'has_updates': False, 'departments': [], 'line_count': 0}
+
+    referenced_versions = {}
+    for line in book.current_draft.lines.all():
+        source_department = (line.admin_annotations or {}).get('source_department')
+        source_version_id = (line.admin_annotations or {}).get('source_version_id')
+        if not source_department or not source_version_id:
+            continue
+        referenced_versions[source_department] = source_version_id
+
+    stale_departments = []
+    for department_code, source_version_id in referenced_versions.items():
+        source_book = BudgetBook.objects.filter(
+            cycle=book.cycle,
+            expense_type=book.expense_type,
+            source_type=BudgetBook.SourceType.SELF_BUILT,
+            department__code=department_code,
+        ).select_related('latest_approved_version', 'department').first()
+        if not source_book or not source_book.latest_approved_version_id:
+            continue
+        if str(source_book.latest_approved_version_id) != str(source_version_id):
+            stale_departments.append(
+                {
+                    'department_code': department_code,
+                    'department_name': source_book.department.name,
+                    'current_source_version_id': str(source_version_id),
+                    'latest_approved_version_id': str(source_book.latest_approved_version_id),
+                }
+            )
+
+    return {
+        'has_updates': bool(stale_departments),
+        'departments': stale_departments,
+        'line_count': len(stale_departments),
+    }
+
+
 @transaction.atomic
 def bulk_operate_budget_lines(version, line_ids, action, patch_data=None, request=None):
     version = BudgetVersion.objects.select_for_update().select_related('book', 'book__template').get(id=version.id)

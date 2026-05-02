@@ -17,6 +17,7 @@ import type {
   ApiImportJobErrors,
   ApiNotification,
   ApiNotificationSummary,
+  ApiPrimarySyncStatus,
   ApiTemplateField,
   ApiUser,
   ApiNamedMasterData,
@@ -110,6 +111,7 @@ export const useWorkbenchStore = defineStore('workbench', {
       latest_unread_title: '',
     } as ApiNotificationSummary,
     latestAllocationUpload: null as ApiAllocationUpload | null,
+    primarySyncStatus: null as ApiPrimarySyncStatus | null,
     allocationDraft: {
       sourceName: 'group-allocation.tsv',
       rawText: '',
@@ -261,6 +263,8 @@ export const useWorkbenchStore = defineStore('workbench', {
           books.results[0]
         this.applyActiveBookContext(activeBook, books.results[0]?.template ?? '')
         this.revisionSourceBookId = books.results.find((book) => !book.current_draft && book.latest_approved_version)?.id ?? ''
+        const primaryConsolidatedBook = books.results.find((book) => book.source_type === 'primary_consolidated')
+        await this.loadPrimarySyncStatus(primaryConsolidatedBook?.id)
         await this.loadTemplateFields()
         await this.loadImportJobs()
         await this.loadNotificationSummary()
@@ -751,6 +755,17 @@ export const useWorkbenchStore = defineStore('workbench', {
         this.notificationSummary = await apiGet<ApiNotificationSummary>('/notifications/summary/')
       } catch (error) {
         this.error = error instanceof Error ? error.message : '加载通知摘要失败'
+      }
+    },
+    async loadPrimarySyncStatus(bookId?: string) {
+      if (!bookId) {
+        this.primarySyncStatus = null
+        return
+      }
+      try {
+        this.primarySyncStatus = await apiGet<ApiPrimarySyncStatus>(`/budget-books/${bookId}/sync-status/`)
+      } catch (error) {
+        this.error = error instanceof Error ? error.message : '加载一级总表同步状态失败'
       }
     },
     async markNotificationsRead(ids?: string[]) {

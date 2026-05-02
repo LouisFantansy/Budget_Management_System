@@ -22,7 +22,12 @@ from .serializers import (
     ImportJobCreateSerializer,
     ImportJobSerializer,
 )
-from .services import bulk_operate_budget_lines, create_revision_draft, submit_budget_version
+from .services import (
+    bulk_operate_budget_lines,
+    create_revision_draft,
+    primary_consolidated_sync_status,
+    submit_budget_version,
+)
 
 
 class BudgetBookViewSet(viewsets.ModelViewSet):
@@ -64,6 +69,11 @@ class BudgetBookViewSet(viewsets.ModelViewSet):
         draft = create_revision_draft(book, requester=request.user)
         serializer = BudgetVersionSerializer(draft)
         return response.Response(serializer.data, status=201)
+
+    @decorators.action(detail=True, methods=['get'], url_path='sync-status')
+    def sync_status(self, request, pk=None):
+        book = self.get_object()
+        return response.Response(primary_consolidated_sync_status(book))
 
 
 class BudgetVersionViewSet(viewsets.ModelViewSet):
