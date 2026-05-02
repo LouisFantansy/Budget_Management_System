@@ -22,6 +22,7 @@ const navItems = [
   { label: '工作台', to: '/', icon: LayoutDashboard },
   { label: '预算编制', to: '/budget-editor', icon: FileSpreadsheet },
   { label: '审批中心', to: '/approvals', icon: CheckCircle2 },
+  { label: '通知中心', to: '/notifications', icon: Bell },
   { label: '预算看板', to: '/dashboards', icon: BarChart3 },
   { label: '主数据', to: '/masterdata', icon: Database },
   { label: '模板管理', to: '/templates', icon: Settings2 },
@@ -83,9 +84,12 @@ onMounted(() => {
             <span>{{ store.currentUser.display_name || store.currentUser.username }}</span>
             <button class="secondary-button" type="button" :disabled="store.actionLoading" @click="store.logout">退出</button>
           </div>
-          <button class="icon-button" type="button" aria-label="通知">
+          <RouterLink class="icon-button notification-button" to="/notifications" aria-label="通知">
             <Bell :size="18" />
-          </button>
+            <span v-if="store.notificationSummary.unread_count" class="notification-dot">
+              {{ store.notificationSummary.unread_count > 99 ? '99+' : store.notificationSummary.unread_count }}
+            </span>
+          </RouterLink>
         </div>
       </header>
 

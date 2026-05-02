@@ -3,6 +3,7 @@ import ApprovalsView from '../views/ApprovalsView.vue'
 import BudgetEditorView from '../views/BudgetEditorView.vue'
 import DashboardsView from '../views/DashboardsView.vue'
 import MasterDataView from '../views/MasterDataView.vue'
+import NotificationsView from '../views/NotificationsView.vue'
 import TemplatesView from '../views/TemplatesView.vue'
 import VersionAnalysisView from '../views/VersionAnalysisView.vue'
 import WorkbenchView from '../views/WorkbenchView.vue'
@@ -13,6 +14,7 @@ export const router = createRouter({
     { path: '/', component: WorkbenchView },
     { path: '/budget-editor', component: BudgetEditorView },
     { path: '/approvals', component: ApprovalsView },
+    { path: '/notifications', component: NotificationsView },
     { path: '/dashboards', component: DashboardsView },
     { path: '/masterdata', component: MasterDataView },
     { path: '/templates', component: TemplatesView },

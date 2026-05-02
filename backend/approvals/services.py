@@ -5,6 +5,8 @@ from rest_framework.exceptions import ValidationError
 
 from accounts.access import can_approve_department
 from budgets.models import BudgetBook, BudgetVersion
+from notifications.models import Notification
+from notifications.services import create_notification
 
 from .models import ApprovalRequest, ApprovalStep
 
@@ -23,6 +25,13 @@ def approve_request(approval_request, approver, comment=''):
     step.comment = comment
     step.acted_at = now
     step.save(update_fields=['action', 'comment', 'acted_at', 'updated_at'])
+    Notification.objects.filter(
+        recipient=approver,
+        category=Notification.Category.APPROVAL_TODO,
+        target_type='approval_request',
+        target_id=approval_request.id,
+        status=Notification.Status.UNREAD,
+    ).update(status=Notification.Status.READ, read_at=now, updated_at=now)
 
     if approval_request.steps.filter(action=ApprovalStep.Action.PENDING).exists():
         return approval_request
@@ -30,6 +39,20 @@ def approve_request(approval_request, approver, comment=''):
     approval_request.status = ApprovalRequest.Status.APPROVED
     approval_request.save(update_fields=['status', 'updated_at'])
     _apply_target_approval(approval_request, approver, now)
+    create_notification(
+        recipient=approval_request.requester,
+        category=Notification.Category.APPROVAL_RESULT,
+        title=f'审批已通过: {approval_request.title}',
+        message=f'{approver.display_name or approver.username} 已通过你的预算送审。',
+        target_type='approval_request',
+        target_id=approval_request.id,
+        department=approval_request.department,
+        extra={
+            'approval_request_id': str(approval_request.id),
+            'result': 'approved',
+            'acted_by': approver.username,
+        },
+    )
     return approval_request
 
 
@@ -47,10 +70,31 @@ def reject_request(approval_request, approver, comment=''):
     step.comment = comment
     step.acted_at = now
     step.save(update_fields=['action', 'comment', 'acted_at', 'updated_at'])
+    Notification.objects.filter(
+        recipient=approver,
+        category=Notification.Category.APPROVAL_TODO,
+        target_type='approval_request',
+        target_id=approval_request.id,
+        status=Notification.Status.UNREAD,
+    ).update(status=Notification.Status.READ, read_at=now, updated_at=now)
 
     approval_request.status = ApprovalRequest.Status.REJECTED
     approval_request.save(update_fields=['status', 'updated_at'])
     _apply_target_rejection(approval_request)
+    create_notification(
+        recipient=approval_request.requester,
+        category=Notification.Category.APPROVAL_RESULT,
+        title=f'审批已退回: {approval_request.title}',
+        message=f'{approver.display_name or approver.username} 已退回你的预算送审，请根据意见修订后重新提交。',
+        target_type='approval_request',
+        target_id=approval_request.id,
+        department=approval_request.department,
+        extra={
+            'approval_request_id': str(approval_request.id),
+            'result': 'rejected',
+            'acted_by': approver.username,
+        },
+    )
     return approval_request
 
 

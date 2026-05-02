@@ -103,6 +103,32 @@ async function openTaskDraft(task: (typeof store.tasks)[number]) {
   <section class="panel">
     <div class="panel-title">
       <div>
+        <p class="eyebrow">Notifications</p>
+        <h2>最近通知</h2>
+      </div>
+      <div class="context-badge">
+        <Clock3 :size="16" />
+        未读 {{ store.notificationSummary.unread_count }}
+      </div>
+    </div>
+    <div v-if="store.notifications.length" class="notification-list compact">
+      <div v-for="item in store.notifications.slice(0, 4)" :key="item.id" class="notification-item" :class="{ unread: item.status === 'unread' }">
+        <div class="notification-copy">
+          <div class="notification-head">
+            <span class="status-chip">{{ item.category === 'approval_todo' ? '审批待办' : item.category === 'approval_result' ? '审批结果' : '系统通知' }}</span>
+            <span class="notification-time">{{ new Date(item.created_at).toLocaleString('zh-CN') }}</span>
+          </div>
+          <strong>{{ item.title }}</strong>
+          <p>{{ item.message || '无附加说明' }}</p>
+        </div>
+      </div>
+    </div>
+    <p v-else class="empty-note">当前没有通知。</p>
+  </section>
+
+  <section class="panel">
+    <div class="panel-title">
+      <div>
         <p class="eyebrow">Budget Lines</p>
         <h2>预算条目预览</h2>
       </div>

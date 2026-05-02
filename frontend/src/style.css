@@ -248,6 +248,27 @@ button:disabled {
   background: var(--surface);
 }
 
+.notification-button {
+  position: relative;
+  text-decoration: none;
+}
+
+.notification-dot {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  min-width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  padding: 0 5px;
+  color: #ffffff;
+  background: var(--red);
+  display: grid;
+  place-items: center;
+  font-size: 10px;
+  font-weight: 700;
+}
+
 .context-pill,
 .secondary-button {
   padding: 0 12px;
@@ -549,6 +570,7 @@ h2 {
 
 .task-list,
 .approval-stack,
+.notification-list,
 .field-list,
 .rule-stack,
 .horizontal-bars {
@@ -611,6 +633,49 @@ h2 {
   color: var(--blue);
   font-size: 13px;
   font-weight: 650;
+}
+
+.notification-list.compact {
+  gap: 8px;
+}
+
+.notification-item {
+  min-height: 88px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 14px;
+  background: rgba(255, 255, 255, 0.72);
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.notification-item.unread {
+  border-color: rgba(10, 132, 255, 0.24);
+  background: rgba(10, 132, 255, 0.05);
+}
+
+.notification-copy {
+  display: grid;
+  gap: 8px;
+}
+
+.notification-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.notification-time {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.notification-copy p {
+  color: var(--muted);
+  font-size: 14px;
 }
 
 .data-table,

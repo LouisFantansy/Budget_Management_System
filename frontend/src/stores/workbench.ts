@@ -14,6 +14,8 @@ import type {
   ApiCategory,
   ApiImportJob,
   ApiImportJobErrors,
+  ApiNotification,
+  ApiNotificationSummary,
   ApiTemplateField,
   ApiUser,
   ApiNamedMasterData,
@@ -100,6 +102,12 @@ export const useWorkbenchStore = defineStore('workbench', {
     importJobs: [] as ApiImportJob[],
     latestImportJob: null as ApiImportJob | null,
     importJobErrors: null as ApiImportJobErrors | null,
+    notifications: [] as ApiNotification[],
+    notificationSummary: {
+      total: 0,
+      unread_count: 0,
+      latest_unread_title: '',
+    } as ApiNotificationSummary,
     importDraft: {
       sourceName: 'budget-import.tsv',
       mode: 'append' as ApiImportJob['mode'],
@@ -249,6 +257,7 @@ export const useWorkbenchStore = defineStore('workbench', {
         this.revisionSourceBookId = books.results.find((book) => !book.current_draft && book.latest_approved_version)?.id ?? ''
         await this.loadTemplateFields()
         await this.loadImportJobs()
+        await this.loadNotificationSummary()
         this.syncSelectedLine()
 
         const approvedLines = this.budgetLines.length
@@ -270,8 +279,10 @@ export const useWorkbenchStore = defineStore('workbench', {
     async loadMe() {
       try {
         this.currentUser = await apiGet<ApiUser>('/auth/me/')
+        await this.loadNotificationSummary()
       } catch {
         this.currentUser = null
+        this.notificationSummary = { total: 0, unread_count: 0, latest_unread_title: '' }
       }
     },
     async login() {
@@ -292,6 +303,8 @@ export const useWorkbenchStore = defineStore('workbench', {
       try {
         await apiPost('/auth/logout/')
         this.currentUser = null
+        this.notifications = []
+        this.notificationSummary = { total: 0, unread_count: 0, latest_unread_title: '' }
       } catch (error) {
         this.error = error instanceof Error ? error.message : '退出失败'
       } finally {
@@ -598,6 +611,99 @@ export const useWorkbenchStore = defineStore('workbench', {
         window.URL.revokeObjectURL(url)
       } catch (error) {
         this.error = error instanceof Error ? error.message : '导出预算条目失败'
+      } finally {
+        this.actionLoading = false
+      }
+    },
+    async downloadImportTemplate() {
+      if (!this.activeDraftVersionId) {
+        this.error = '当前没有可下载模板的 Draft 版本'
+        return
+      }
+      this.actionLoading = true
+      this.error = ''
+      try {
+        const content = await apiGetText(`/budget-versions/${this.activeDraftVersionId}/import-template/`)
+        const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' })
+        const url = window.URL.createObjectURL(blob)
+        const link = document.createElement('a')
+        link.href = url
+        link.download = `budget-version-${this.activeDraftVersionId}-import-template.csv`
+        document.body.appendChild(link)
+        link.click()
+        link.remove()
+        window.URL.revokeObjectURL(url)
+      } catch (error) {
+        this.error = error instanceof Error ? error.message : '下载导入模板失败'
+      } finally {
+        this.actionLoading = false
+      }
+    },
+    async downloadImportSample() {
+      if (!this.activeDraftVersionId) {
+        this.error = '当前没有可下载示例的 Draft 版本'
+        return
+      }
+      this.actionLoading = true
+      this.error = ''
+      try {
+        const content = await apiGetText(`/budget-versions/${this.activeDraftVersionId}/import-sample/`)
+        const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' })
+        const url = window.URL.createObjectURL(blob)
+        const link = document.createElement('a')
+        link.href = url
+        link.download = `budget-version-${this.activeDraftVersionId}-import-sample.csv`
+        document.body.appendChild(link)
+        link.click()
+        link.remove()
+        window.URL.revokeObjectURL(url)
+      } catch (error) {
+        this.error = error instanceof Error ? error.message : '下载示例数据失败'
+      } finally {
+        this.actionLoading = false
+      }
+    },
+    async loadNotifications() {
+      if (!this.currentUser) {
+        this.notifications = []
+        return
+      }
+      this.loading = true
+      this.error = ''
+      try {
+        const response = await apiGet<PaginatedResponse<ApiNotification>>('/notifications/')
+        this.notifications = response.results
+        await this.loadNotificationSummary()
+      } catch (error) {
+        this.error = error instanceof Error ? error.message : '加载通知失败'
+      } finally {
+        this.loading = false
+      }
+    },
+    async loadNotificationSummary() {
+      if (!this.currentUser) {
+        this.notificationSummary = { total: 0, unread_count: 0, latest_unread_title: '' }
+        return
+      }
+      try {
+        this.notificationSummary = await apiGet<ApiNotificationSummary>('/notifications/summary/')
+      } catch (error) {
+        this.error = error instanceof Error ? error.message : '加载通知摘要失败'
+      }
+    },
+    async markNotificationsRead(ids?: string[]) {
+      if (!this.currentUser) return
+      this.actionLoading = true
+      this.error = ''
+      try {
+        if (ids?.length) {
+          await apiPost('/notifications/mark-read/', { ids })
+        } else {
+          await apiPost('/notifications/mark-read/', { all: true })
+        }
+        await this.loadNotifications()
+      } catch (error) {
+        this.error = error instanceof Error ? error.message : '标记通知已读失败'
       } finally {
         this.actionLoading = false
       }

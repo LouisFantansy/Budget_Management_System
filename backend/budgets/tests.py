@@ -804,6 +804,51 @@ class BudgetImportExportAPITests(APITestCase):
         self.assertIn('OLD-001', content)
         self.assertIn('已有补充', content)
         self.assertIn('已有备注', content)
+        self.assertIn('预算部门', content)
+        self.assertIn(self.department.name, content)
+
+    def test_can_download_import_template_csv(self):
+        self.client.force_authenticate(self.requester)
+
+        response = self.client.get(reverse('budgetversion-import-template', args=[self.version.id]))
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response['Content-Type'], 'text/csv; charset=utf-8')
+        content = response.content.decode('utf-8').strip().splitlines()
+        self.assertEqual(len(content), 1)
+        header = content[0].split(',')
+        self.assertEqual(header[0], '预算编号')
+        self.assertEqual(header[1], '预算部门')
+        self.assertIn('1月采购数量', header)
+        self.assertIn('12月采购金额', header)
+        self.assertIn('采购原因补充', header)
+
+    def test_can_download_import_sample_csv(self):
+        self.client.force_authenticate(self.requester)
+
+        response = self.client.get(reverse('budgetversion-import-sample', args=[self.version.id]))
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response['Content-Type'], 'text/csv; charset=utf-8')
+        lines = response.content.decode('utf-8').strip().splitlines()
+        self.assertEqual(len(lines), 2)
+        header = lines[0].split(',')
+        sample = lines[1].split(',')
+        self.assertEqual(sample[0], 'SAMPLE-001')
+        self.assertEqual(sample[1], self.department.name)
+        self.assertEqual(sample[header.index('预算条目描述')], '示例预算条目')
+        self.assertEqual(sample[header.index('1月采购数量')], '1.00')
+        self.assertEqual(sample[header.index('1月采购金额')], '100.00')
+        self.assertEqual(sample[header.index('采购原因补充')], '示例值')
+
+    def test_other_department_user_cannot_download_import_assets(self):
+        self.client.force_authenticate(self.other_user)
+
+        template_response = self.client.get(reverse('budgetversion-import-template', args=[self.version.id]))
+        sample_response = self.client.get(reverse('budgetversion-import-sample', args=[self.version.id]))
+
+        self.assertEqual(template_response.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertEqual(sample_response.status_code, status.HTTP_404_NOT_FOUND)
 
     def _valid_import_text(self, budget_no):
         headers = [

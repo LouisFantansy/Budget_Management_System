@@ -6,6 +6,8 @@ from rest_framework.exceptions import ValidationError
 from accounts.models import RoleAssignment, User
 from approvals.models import ApprovalRequest, ApprovalStep
 from budget_templates.validation import collect_dynamic_data_errors
+from notifications.models import Notification
+from notifications.services import create_notifications
 from orgs.models import Department
 
 from .models import BudgetBook, BudgetLine, BudgetMonthlyPlan, BudgetVersion
@@ -71,6 +73,21 @@ def submit_budget_version(version, requester, approver_ids=None, comment=''):
             ApprovalStep(request=approval_request, node=1, approver=approver)
             for approver in approvers
         ]
+    )
+    create_notifications(
+        approvers,
+        category=Notification.Category.APPROVAL_TODO,
+        title=f'待审批: {approval_request.title}',
+        message=f'{requester.display_name or requester.username} 已提交 {book.department.name} {book.get_expense_type_display()} 预算，请尽快处理。',
+        target_type='approval_request',
+        target_id=approval_request.id,
+        department=book.department,
+        extra={
+            'approval_request_id': str(approval_request.id),
+            'version_id': str(version.id),
+            'book_id': str(book.id),
+            'result': 'pending',
+        },
     )
     return approval_request
 

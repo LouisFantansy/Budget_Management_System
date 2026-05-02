@@ -301,3 +301,25 @@ export interface ApiBudgetLineBulkResult {
   created_ids?: string[]
   updated_ids?: string[]
 }
+
+export interface ApiNotification {
+  id: string
+  recipient: number
+  category: 'approval_todo' | 'approval_result' | 'system'
+  title: string
+  message: string
+  status: 'unread' | 'read'
+  target_type: string
+  target_id: string | null
+  department: string | null
+  extra: Record<string, unknown>
+  read_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface ApiNotificationSummary {
+  total: number
+  unread_count: number
+  latest_unread_title: string
+}

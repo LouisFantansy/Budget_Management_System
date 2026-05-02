@@ -261,6 +261,12 @@ function toggleSelectAll() {
         <option value="append">追加导入</option>
         <option value="replace">覆盖导入</option>
       </select>
+      <button class="secondary-button" type="button" :disabled="store.actionLoading" @click="store.downloadImportTemplate">
+        下载导入模板
+      </button>
+      <button class="secondary-button" type="button" :disabled="store.actionLoading" @click="store.downloadImportSample">
+        下载示例数据
+      </button>
       <button class="primary-button" type="button" :disabled="store.actionLoading" @click="store.importBudgetLines">
         开始导入
       </button>

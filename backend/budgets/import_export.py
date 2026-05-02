@@ -60,12 +60,11 @@ class ParsedImportRow:
     monthly_amounts: list[Decimal]
 
 
-def export_budget_version_csv(version: BudgetVersion) -> str:
-    buffer = io.StringIO()
-    writer = csv.writer(buffer)
+def budget_version_import_header(version: BudgetVersion) -> list[str]:
     template_fields = list(version.book.template.fields.order_by('order', 'code'))
     header = [
         '预算编号',
+        '预算部门',
         '成本中心代码',
         'category',
         'category L1',
@@ -86,7 +85,14 @@ def export_budget_version_csv(version: BudgetVersion) -> str:
     header.extend([f'{month}月采购数量' for month in range(1, 13)])
     header.extend([f'{month}月采购金额' for month in range(1, 13)])
     header.extend([field.label for field in template_fields])
-    writer.writerow(header)
+    return header
+
+
+def export_budget_version_csv(version: BudgetVersion) -> str:
+    buffer = io.StringIO()
+    writer = csv.writer(buffer)
+    template_fields = list(version.book.template.fields.order_by('order', 'code'))
+    writer.writerow(budget_version_import_header(version))
 
     for line in version.lines.select_related(
         'category',
@@ -101,6 +107,7 @@ def export_budget_version_csv(version: BudgetVersion) -> str:
         monthly_map = {plan.month: plan for plan in line.monthly_plans.all()}
         row = [
             line.budget_no,
+            line.department.name if line.department_id else version.book.department.name,
             line.cost_center_code,
             line.category.name if line.category else '',
             line.category_l1.name if line.category_l1 else '',
@@ -122,6 +129,45 @@ def export_budget_version_csv(version: BudgetVersion) -> str:
         row.extend([str(monthly_map.get(month).amount if month in monthly_map else Decimal('0.00')) for month in range(1, 13)])
         row.extend([stringify_dynamic_value(line.dynamic_data.get(field.code)) for field in template_fields])
         writer.writerow(row)
+    return buffer.getvalue()
+
+
+def export_budget_version_import_template_csv(version: BudgetVersion) -> str:
+    buffer = io.StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow(budget_version_import_header(version))
+    return buffer.getvalue()
+
+
+def export_budget_version_import_sample_csv(version: BudgetVersion) -> str:
+    buffer = io.StringIO()
+    writer = csv.writer(buffer)
+    template_fields = list(version.book.template.fields.order_by('order', 'code'))
+    writer.writerow(budget_version_import_header(version))
+    row = [
+        'SAMPLE-001',
+        version.book.department.name,
+        'CC1001',
+        '',
+        '',
+        '',
+        'GL100',
+        '',
+        '',
+        '',
+        '示例预算条目',
+        '',
+        '示例采购原因',
+        '',
+        '100.00',
+        '1.00',
+        '100.00',
+        '示例备注',
+    ]
+    row.extend(['1.00'] + ['0.00'] * 11)
+    row.extend(['100.00'] + ['0.00'] * 11)
+    row.extend([_sample_dynamic_value(field) for field in template_fields])
+    writer.writerow(row)
     return buffer.getvalue()
 
 
@@ -208,6 +254,20 @@ def stringify_dynamic_value(value):
     if isinstance(value, bool):
         return 'true' if value else 'false'
     return str(value)
+
+
+def _sample_dynamic_value(field):
+    if field.data_type == field.DataType.BOOLEAN:
+        return 'false'
+    if field.data_type in {field.DataType.NUMBER, field.DataType.MONEY}:
+        return '0.00'
+    if field.data_type == field.DataType.DATE:
+        return '2029-01-01'
+    if field.data_type == field.DataType.JSON:
+        return '{}'
+    if field.data_type == field.DataType.OPTION:
+        return '示例选项'
+    return '示例值'
 
 
 def _parse_rows(version: BudgetVersion, rows: list[dict[str, str]]):
