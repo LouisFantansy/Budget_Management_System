@@ -36,4 +36,5 @@ urlpatterns = [
     path('api/', include('approvals.urls')),
     path('api/', include('analytics.urls')),
     path('api/', include('notifications.urls')),
+    path('api/', include('demands.urls')),
 ]

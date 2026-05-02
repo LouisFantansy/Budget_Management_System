@@ -170,6 +170,8 @@ class BudgetLineViewSet(viewsets.ModelViewSet):
             raise ValidationError({'version': '已送审或已审批版本不可删除预算条目。'})
         if not can_edit_department_budget(self.request.user, instance.version.book.department_id):
             raise ValidationError({'version': '没有权限删除该部门预算条目。'})
+        if not is_global_budget_user(self.request.user) and not instance.editable_by_secondary:
+            raise ValidationError({'version': '该预算条目已锁定，需回到来源模块维护。'})
         super().perform_destroy(instance)
 
     @decorators.action(detail=False, methods=['post'], url_path='bulk')
@@ -216,6 +218,8 @@ class BudgetMonthlyPlanViewSet(viewsets.ModelViewSet):
             raise ValidationError({'line': '已送审或已审批版本不可删除月度计划。'})
         if not can_edit_department_budget(self.request.user, instance.line.version.book.department_id):
             raise ValidationError({'line': '没有权限删除该部门月度计划。'})
+        if not is_global_budget_user(self.request.user) and not instance.line.editable_by_secondary:
+            raise ValidationError({'line': '该预算条目已锁定，需回到来源模块维护。'})
         super().perform_destroy(instance)
 
 

@@ -355,6 +355,15 @@ h2 {
   background: rgba(214, 69, 69, 0.08);
 }
 
+.success-banner {
+  margin: 0 0 16px;
+  padding: 10px 12px;
+  border: 1px solid rgba(48, 180, 108, 0.22);
+  border-radius: 8px;
+  color: #1d4e36;
+  background: rgba(48, 180, 108, 0.08);
+}
+
 .empty-note {
   color: var(--muted);
   font-size: 14px;
@@ -776,6 +785,24 @@ h2 {
   color: var(--text);
   background: rgba(255, 255, 255, 0.86);
   resize: vertical;
+}
+
+.demand-form-grid {
+  grid-template-columns: minmax(240px, 1fr) minmax(220px, 280px);
+  align-items: center;
+  margin-bottom: 14px;
+}
+
+.demand-payload {
+  min-height: 320px;
+  margin-top: 14px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.task-row-dense {
+  grid-template-columns: minmax(180px, 1fr) 120px 170px;
 }
 
 .import-job-card {

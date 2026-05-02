@@ -3,6 +3,7 @@ from django.db.models import Max
 from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 
+from accounts.access import is_global_budget_user
 from accounts.models import RoleAssignment, User
 from approvals.models import ApprovalRequest, ApprovalStep
 from budget_templates.validation import collect_dynamic_data_errors
@@ -357,6 +358,10 @@ def bulk_operate_budget_lines(version, line_ids, action, patch_data=None, reques
     missing_ids = sorted(requested_ids - found_ids)
     if missing_ids:
         raise ValidationError({'line_ids': f'存在不属于当前 Draft 的预算条目: {", ".join(missing_ids)}'})
+    if request and not is_global_budget_user(request.user):
+        locked_lines = [str(line.id) for line in lines if not line.editable_by_secondary]
+        if locked_lines:
+            raise ValidationError({'line_ids': '选中的预算条目包含锁定条目，需回到来源模块维护。'})
 
     if action == 'delete':
         deleted_count = len(lines)

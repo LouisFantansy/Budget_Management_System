@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from accounts.access import can_edit_department_budget
+from accounts.access import can_edit_department_budget, is_global_budget_user
 from budget_templates.validation import validate_dynamic_data
 from .models import AllocationUpload, BudgetBook, BudgetLine, BudgetMonthlyPlan, BudgetVersion, ImportJob
 
@@ -16,6 +16,8 @@ class BudgetMonthlyPlanSerializer(serializers.ModelSerializer):
         request = self.context.get('request')
         if request and not can_edit_department_budget(request.user, line.version.book.department_id):
             raise serializers.ValidationError('没有权限维护该部门月度计划。')
+        if request and not is_global_budget_user(request.user) and not line.editable_by_secondary:
+            raise serializers.ValidationError('该预算条目已锁定，需回到来源模块维护。')
         return line
 
     def update(self, instance, validated_data):
@@ -24,6 +26,8 @@ class BudgetMonthlyPlanSerializer(serializers.ModelSerializer):
         request = self.context.get('request')
         if request and not can_edit_department_budget(request.user, instance.line.version.book.department_id):
             raise serializers.ValidationError({'line': '没有权限维护该部门月度计划。'})
+        if request and not is_global_budget_user(request.user) and not instance.line.editable_by_secondary:
+            raise serializers.ValidationError({'line': '该预算条目已锁定，需回到来源模块维护。'})
         return super().update(instance, validated_data)
 
 
@@ -40,6 +44,8 @@ class BudgetLineSerializer(serializers.ModelSerializer):
         request = self.context.get('request')
         if request and not can_edit_department_budget(request.user, version.book.department_id):
             raise serializers.ValidationError('没有权限维护该部门预算条目。')
+        if request and version.book.source_type == BudgetBook.SourceType.SPECIAL and not is_global_budget_user(request.user):
+            raise serializers.ValidationError('专题生成预算需回到专题需求模块维护。')
         return version
 
     def validate(self, attrs):
@@ -55,6 +61,8 @@ class BudgetLineSerializer(serializers.ModelSerializer):
         request = self.context.get('request')
         if request and not can_edit_department_budget(request.user, instance.version.book.department_id):
             raise serializers.ValidationError({'version': '没有权限维护该部门预算条目。'})
+        if request and not is_global_budget_user(request.user) and not instance.editable_by_secondary:
+            raise serializers.ValidationError({'version': '该预算条目已锁定，需回到来源模块维护。'})
         if 'dynamic_data' in validated_data:
             merged = dict(instance.dynamic_data or {})
             merged.update(validated_data['dynamic_data'] or {})

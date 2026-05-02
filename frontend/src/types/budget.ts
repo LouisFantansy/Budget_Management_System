@@ -356,3 +356,38 @@ export interface ApiPrimarySyncStatus {
     latest_approved_version_id: string
   }>
 }
+
+export interface ApiDemandTemplate {
+  id: string
+  cycle: string
+  name: string
+  expense_type: 'opex' | 'capex'
+  status: 'draft' | 'active' | 'archived'
+  target_mode: 'secondary' | 'ss_public'
+  target_department: string | null
+  schema: Array<Record<string, unknown>>
+  default_payload: Array<Record<string, unknown>>
+}
+
+export interface ApiDemandSheet {
+  id: string
+  template: string
+  template_name: string
+  target_department: string
+  requested_by: number | null
+  status: 'draft' | 'confirmed' | 'generated'
+  payload: Array<Record<string, unknown>>
+  generated_budget_book: string | null
+  generated_budget_book_status?: string
+  generated_budget_version: string | null
+  generated_line_count: number
+  created_at: string
+  updated_at: string
+}
+
+export interface ApiDemandGenerateResponse {
+  sheet_id: string
+  generated_line_count: number
+  book_id: string
+  version: ApiBudgetVersion
+}
