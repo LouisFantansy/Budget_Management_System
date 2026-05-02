@@ -90,13 +90,19 @@ npm run build
 
 ### 当前测试基线
 
-- `manage.py test`：64 通过
-- `manage.py test budget_cycles budgets`：35 通过
+- `manage.py test`：97 通过
+- `manage.py test budget_cycles budgets`：53 通过
 - `manage.py test masterdata`：6 通过
 - `manage.py test analytics`：13 通过
-- `manage.py test budgets`：34 通过
+- `manage.py test budgets`：48 通过
 - 后端 check：通过
 - 前端构建：通过
+
+### 模块交付节奏
+
+- 当前剩余模块顺序以 `docs/剩余开发模块与执行节奏.md` 为准。
+- 每个模块完成后先执行模块级验证，再更新文档，再推送 GitHub。
+- GitHub Actions 会自动执行后端 check、后端测试和前端构建。
 
 ## Demo Data
 
