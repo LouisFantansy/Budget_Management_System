@@ -68,8 +68,8 @@ localStorage.setItem('budget_basic_auth', btoa('primary-admin:password'))
 - 一级总表明细：支持查看来源部门、来源版本、月度计划和动态字段详情。
 - 审批中心：通过和退回，并区分二级审批、一级初审、一级终审阶段。
 - 预算看板：部门、Category、项目、项目类别、产品线、费用类型和月度聚合，支持部门聚焦、OPEX/CAPEX 过滤、保存视图、默认看板配置和条目下钻。
-- 主数据：支持 Project Category、Product Line、Project 关系维护。
-- 模板管理：支持 schema 修订、复制上一周期模板，以及字段的宽度、冻结列、Dashboard 标签、审批快照、导入别名和下拉来源维护。
+- 主数据：支持 Category、Project Category、Product Line、Project、Vendor、Region、Cost Center、GL Account 维护，并支持历史名称、别名和启停控制。
+- 模板管理：支持 schema 修订、复制上一周期模板，以及字段的宽度、冻结列、Dashboard 标签、审批快照、导入别名和下拉来源维护；下拉来源通过 `/api/option-sources/` 统一注册和暴露。
 - 专题需求：支持按模板创建填写任务、结构化填报、部门提交、一级确认、预算同步，以及变更后的重新打开和重同步。
 - 版本分析：版本链路和 Diff。
 
@@ -92,7 +92,7 @@ npm run build
 
 ### 当前测试基线
 
-- `manage.py test`：119 通过
+- `manage.py test`：128 通过
 - `manage.py test demands`：10 通过
 - `manage.py test budget_cycles budgets`：53 通过
 - `manage.py test approvals budgets budget_cycles notifications`：60 通过
@@ -102,6 +102,8 @@ npm run build
 - `manage.py test budget_templates budgets masterdata`：72 通过
 - `manage.py test budget_templates budget_cycles demands`：38 通过
 - `manage.py test demands budgets budget_cycles notifications`：75 通过
+- `manage.py test masterdata budgets analytics`：77 通过
+- `manage.py test masterdata budget_templates budgets`：78 通过
 - `manage.py test masterdata`：6 通过
 - `manage.py test analytics`：19 通过
 - `manage.py test budgets`：48 通过

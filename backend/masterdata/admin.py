@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Category, ProductLine, Project, ProjectCategory, PurchaseHistory, Region, Vendor
+from .models import Category, CostCenter, GLAccount, OptionSourceRegistryEntry, ProductLine, Project, ProjectCategory, PurchaseHistory, Region, Vendor
 
 
 @admin.register(Category)
@@ -15,6 +15,9 @@ admin.site.register(ProductLine)
 admin.site.register(Project)
 admin.site.register(Vendor)
 admin.site.register(Region)
+admin.site.register(CostCenter)
+admin.site.register(GLAccount)
+admin.site.register(OptionSourceRegistryEntry)
 
 
 @admin.register(PurchaseHistory)

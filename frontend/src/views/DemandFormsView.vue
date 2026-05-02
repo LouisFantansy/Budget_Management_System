@@ -77,15 +77,7 @@ function formatDateTime(value: string | null) {
 }
 
 function optionValues(field: ApiDemandSchemaField) {
-  const source = field.option_source?.trim() ?? ''
-  if (!source) return []
-  if (source === 'masterdata.projects') return projects.value.map((item) => item.name)
-  if (source === 'masterdata.departments') return departments.value.map((item) => item.name)
-  if (source === 'system.users') return users.value.map((item) => item.display_name || item.username)
-  return source
-    .split('|')
-    .map((item) => item.trim())
-    .filter(Boolean)
+  return storeLikeOptionValues(field.option_source ?? '')
 }
 
 function fieldPlaceholder(field: ApiDemandSchemaField) {
@@ -98,6 +90,18 @@ function fieldPlaceholder(field: ApiDemandSchemaField) {
 
 function isSelectLikeField(field: ApiDemandSchemaField) {
   return ['select', 'project', 'department', 'user'].includes(field.input_type)
+}
+
+function storeLikeOptionValues(source: string) {
+  const normalized = source.trim()
+  if (!normalized) return []
+  if (normalized === 'masterdata.projects') return projects.value.map((item) => item.name)
+  if (normalized === 'masterdata.departments') return departments.value.map((item) => item.name)
+  if (normalized === 'system.users') return users.value.map((item) => item.display_name || item.username)
+  return normalized
+    .split('|')
+    .map((item) => item.trim())
+    .filter(Boolean)
 }
 
 function baseValueForField(field: ApiDemandSchemaField) {

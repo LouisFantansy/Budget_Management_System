@@ -1,8 +1,11 @@
 from rest_framework import decorators, response, viewsets
 
-from .models import Category, ProductLine, Project, ProjectCategory, PurchaseHistory, Region, Vendor
+from .models import Category, CostCenter, GLAccount, OptionSourceRegistryEntry, ProductLine, Project, ProjectCategory, PurchaseHistory, Region, Vendor
 from .serializers import (
     CategorySerializer,
+    CostCenterSerializer,
+    GLAccountSerializer,
+    OptionSourceRegistryEntrySerializer,
     ProductLineSerializer,
     ProjectCategorySerializer,
     ProjectSerializer,
@@ -10,6 +13,7 @@ from .serializers import (
     RegionSerializer,
     VendorSerializer,
 )
+from .services import option_source_catalog_entries
 
 
 class CategoryViewSet(viewsets.ModelViewSet):
@@ -50,6 +54,26 @@ class RegionViewSet(viewsets.ModelViewSet):
     search_fields = ['name', 'code']
 
 
+class CostCenterViewSet(viewsets.ModelViewSet):
+    queryset = CostCenter.objects.select_related('department').all()
+    serializer_class = CostCenterSerializer
+    filterset_fields = ['department', 'is_active']
+    search_fields = ['name', 'code', 'legacy_name']
+
+
+class GLAccountViewSet(viewsets.ModelViewSet):
+    queryset = GLAccount.objects.select_related('mapped_category', 'mapped_project_category').all()
+    serializer_class = GLAccountSerializer
+    filterset_fields = ['mapped_category', 'mapped_project_category', 'is_active']
+    search_fields = ['name', 'code', 'legacy_name']
+
+
+class OptionSourceRegistryEntryViewSet(viewsets.ModelViewSet):
+    queryset = OptionSourceRegistryEntry.objects.all()
+    serializer_class = OptionSourceRegistryEntrySerializer
+    search_fields = ['code', 'label']
+
+
 class PurchaseHistoryViewSet(viewsets.ModelViewSet):
     queryset = PurchaseHistory.objects.select_related('vendor', 'category').all()
     serializer_class = PurchaseHistorySerializer
@@ -63,5 +87,10 @@ class PurchaseHistoryViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(purchase_name__icontains=query)
         serializer = self.get_serializer(queryset[:10], many=True)
         return response.Response(serializer.data)
+
+
+@decorators.api_view(['GET'])
+def option_source_catalog(_request):
+    return response.Response(option_source_catalog_entries())
 
 # Create your views here.

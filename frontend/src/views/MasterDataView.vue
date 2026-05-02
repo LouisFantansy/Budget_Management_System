@@ -13,6 +13,8 @@ const tabs: Array<{ key: MasterDataKind; label: string }> = [
   { key: 'projects', label: 'Project' },
   { key: 'vendors', label: 'Vendor' },
   { key: 'regions', label: 'Region' },
+  { key: 'cost-centers', label: 'Cost Center' },
+  { key: 'gl-accounts', label: 'GL Account' },
 ]
 
 const currentItems = computed(() => store.masterData[store.masterDataKind])
@@ -102,6 +104,8 @@ onMounted(() => {
       <div class="field-form masterdata-form" :class="{ 'masterdata-form-project': store.masterDataKind === 'projects' }">
         <input v-model="store.masterDataDraft.code" placeholder="编码，如 CLOUD" />
         <input v-model="store.masterDataDraft.name" placeholder="名称，如 Cloud Service" />
+        <input v-model="store.masterDataDraft.legacyName" placeholder="历史名称 / legacy name" />
+        <input v-model="store.masterDataDraft.aliases" placeholder="别名，逗号分隔" />
         <select v-if="store.masterDataKind === 'projects'" v-model="store.masterDataDraft.projectCategoryId">
           <option value="">选择 Project Category</option>
           <option v-for="item in store.masterData['project-categories']" :key="item.id" :value="item.id">{{ item.name }}</option>
@@ -109,6 +113,23 @@ onMounted(() => {
         <select v-if="store.masterDataKind === 'projects'" v-model="store.masterDataDraft.productLineId">
           <option value="">选择 Product Line</option>
           <option v-for="item in store.masterData['product-lines']" :key="item.id" :value="item.id">{{ item.name }}</option>
+        </select>
+        <select v-if="store.masterDataKind === 'cost-centers'" v-model="store.masterDataDraft.departmentId">
+          <option value="">选择部门</option>
+          <option v-for="item in store.departments" :key="item.id" :value="item.id">{{ item.name }}</option>
+        </select>
+        <select v-if="store.masterDataKind === 'gl-accounts'" v-model="store.masterDataDraft.expenseType">
+          <option value="">费用类型</option>
+          <option value="opex">OPEX</option>
+          <option value="capex">CAPEX</option>
+        </select>
+        <select v-if="store.masterDataKind === 'gl-accounts'" v-model="store.masterDataDraft.mappedCategoryId">
+          <option value="">映射 Category</option>
+          <option v-for="item in store.masterData.categories" :key="item.id" :value="item.id">{{ item.name }}</option>
+        </select>
+        <select v-if="store.masterDataKind === 'gl-accounts'" v-model="store.masterDataDraft.mappedProjectCategoryId">
+          <option value="">映射 Project Category</option>
+          <option v-for="item in store.masterData['project-categories']" :key="item.id" :value="item.id">{{ item.name }}</option>
         </select>
       </div>
 

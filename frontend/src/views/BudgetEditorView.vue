@@ -77,18 +77,7 @@ function lineStateLocked(line: (typeof store.budgetLines)[number]) {
 }
 
 function optionValues(field: (typeof store.templateFields)[number]) {
-  const source = field.option_source?.trim() ?? ''
-  if (!source) return []
-  if (source === 'masterdata.projects') return store.masterData.projects.map((item) => item.name)
-  if (source === 'masterdata.project_categories') return store.masterData['project-categories'].map((item) => item.name)
-  if (source === 'masterdata.product_lines') return store.masterData['product-lines'].map((item) => item.name)
-  if (source === 'masterdata.categories') return store.masterData.categories.map((item) => item.name)
-  if (source === 'masterdata.vendors') return store.masterData.vendors.map((item) => item.name)
-  if (source === 'masterdata.regions') return store.masterData.regions.map((item) => item.name)
-  return source
-    .split('|')
-    .map((item) => item.trim())
-    .filter(Boolean)
+  return store.resolveOptionValues(field.option_source ?? '').map((item) => item.label)
 }
 
 function toggleSelectAll() {

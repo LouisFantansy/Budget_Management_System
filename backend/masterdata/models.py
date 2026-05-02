@@ -8,7 +8,11 @@ from common.models import TimestampedModel
 class NamedMasterData(TimestampedModel):
     code = models.CharField(max_length=64, unique=True)
     name = models.CharField(max_length=128)
+    legacy_name = models.CharField(max_length=128, blank=True)
+    aliases = models.JSONField(default=list, blank=True)
+    notes = models.TextField(blank=True)
     is_active = models.BooleanField(default=True)
+    keep_history = models.BooleanField(default=True)
     sort_order = models.PositiveIntegerField(default=0)
 
     class Meta:
@@ -64,6 +68,49 @@ class Region(NamedMasterData):
     class Meta(NamedMasterData.Meta):
         verbose_name = '地区'
         verbose_name_plural = '地区'
+
+
+class CostCenter(NamedMasterData):
+    department = models.ForeignKey('orgs.Department', on_delete=models.SET_NULL, null=True, blank=True, related_name='cost_centers')
+
+    class Meta(NamedMasterData.Meta):
+        verbose_name = '成本中心'
+        verbose_name_plural = '成本中心'
+
+
+class GLAccount(NamedMasterData):
+    expense_type = models.CharField(max_length=16, blank=True)
+    mapped_category = models.ForeignKey(Category, on_delete=models.SET_NULL, null=True, blank=True, related_name='gl_accounts')
+    mapped_project_category = models.ForeignKey(
+        ProjectCategory,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='gl_accounts',
+    )
+
+    class Meta(NamedMasterData.Meta):
+        verbose_name = 'GL Account'
+        verbose_name_plural = 'GL Account'
+
+
+class OptionSourceRegistryEntry(TimestampedModel):
+    code = models.CharField(max_length=128, unique=True)
+    label = models.CharField(max_length=128)
+    kind = models.CharField(max_length=32, default='masterdata')
+    endpoint = models.CharField(max_length=255)
+    value_field = models.CharField(max_length=64, default='code')
+    label_field = models.CharField(max_length=64, default='name')
+    is_active = models.BooleanField(default=True)
+    sort_order = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        verbose_name = '选项源注册表'
+        verbose_name_plural = '选项源注册表'
+        ordering = ['sort_order', 'code']
+
+    def __str__(self):
+        return self.code
 
 
 class PurchaseHistory(TimestampedModel):

@@ -1,6 +1,7 @@
 from rest_framework import serializers
 
 from accounts.access import can_manage_template_schema
+from masterdata.services import is_registered_option_source
 from .access import can_user_edit_template_field, can_user_view_template_field, normalize_field_rules
 from .models import BudgetTemplate, TemplateField
 from .validation import validate_template_formula
@@ -34,6 +35,14 @@ class TemplateFieldSerializer(serializers.ModelSerializer):
 
         if input_type in {TemplateField.InputType.SELECT, TemplateField.InputType.MULTI_SELECT} and not option_source:
             raise serializers.ValidationError({'option_source': '下拉字段必须配置 option_source。'})
+        if input_type in {
+            TemplateField.InputType.SELECT,
+            TemplateField.InputType.MULTI_SELECT,
+            TemplateField.InputType.USER,
+            TemplateField.InputType.DEPARTMENT,
+            TemplateField.InputType.PROJECT,
+        } and option_source and '|' not in option_source and not is_registered_option_source(option_source):
+            raise serializers.ValidationError({'option_source': f'未注册的 option_source: {option_source}'})
         if input_type not in {TemplateField.InputType.SELECT, TemplateField.InputType.MULTI_SELECT}:
             attrs['option_source'] = ''
 

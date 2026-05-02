@@ -16,6 +16,7 @@ from budget_templates.access import (
 from budget_templates.models import TemplateField
 from budget_templates.validation import collect_dynamic_data_errors, resolve_dynamic_data
 from masterdata.models import Category, ProductLine, Project, ProjectCategory, Region, Vendor
+from masterdata.services import resolve_named_masterdata
 
 from .models import BudgetLine, BudgetMonthlyPlan, BudgetVersion, ImportJob
 
@@ -528,7 +529,7 @@ def _parse_decimal_field(value: str, field_name: str):
 def _lookup_named_object(model, value: str, field_name: str):
     if not value:
         return None, ''
-    candidate = model.objects.filter(name=value).first() or model.objects.filter(code=value).first()
+    candidate = resolve_named_masterdata(model, value)
     if not candidate:
         return None, f'{field_name} 找不到主数据: {value}'
     return candidate, ''

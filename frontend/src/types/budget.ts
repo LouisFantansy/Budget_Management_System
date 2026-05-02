@@ -350,7 +350,11 @@ export interface ApiNamedMasterData {
   id: string
   code: string
   name: string
+  legacy_name?: string
+  aliases?: string[]
+  notes?: string
   is_active: boolean
+  keep_history?: boolean
   sort_order: number
 }
 
@@ -371,6 +375,31 @@ export type MasterDataKind =
   | 'projects'
   | 'vendors'
   | 'regions'
+  | 'cost-centers'
+  | 'gl-accounts'
+
+export interface ApiCostCenter extends ApiNamedMasterData {
+  department: string | null
+  department_name?: string
+}
+
+export interface ApiGLAccount extends ApiNamedMasterData {
+  expense_type: string
+  mapped_category: string | null
+  mapped_category_name?: string
+  mapped_project_category: string | null
+  mapped_project_category_name?: string
+}
+
+export interface ApiOptionSource {
+  code: string
+  label: string
+  kind: string
+  endpoint: string
+  value_field: string
+  label_field: string
+  is_builtin: boolean
+}
 
 export interface ApiPurchaseHistory {
   id: string

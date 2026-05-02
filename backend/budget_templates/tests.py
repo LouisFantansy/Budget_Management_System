@@ -132,6 +132,41 @@ class TemplateFieldAPITests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn('option_source', response.data)
 
+    def test_registered_option_source_is_accepted(self):
+        response = self.client.post(
+            reverse('templatefield-list'),
+            {
+                'template': str(self.template.id),
+                'code': 'cost_center',
+                'label': '成本中心',
+                'data_type': TemplateField.DataType.OPTION,
+                'input_type': TemplateField.InputType.SELECT,
+                'option_source': 'masterdata.cost_centers',
+                'order': 60,
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+    def test_unknown_registered_option_source_is_rejected(self):
+        response = self.client.post(
+            reverse('templatefield-list'),
+            {
+                'template': str(self.template.id),
+                'code': 'bad_source',
+                'label': '坏来源',
+                'data_type': TemplateField.DataType.OPTION,
+                'input_type': TemplateField.InputType.SELECT,
+                'option_source': 'masterdata.unknown_source',
+                'order': 70,
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('option_source', response.data)
+
     def test_primary_budget_admin_can_update_template_field(self):
         field = TemplateField.objects.create(
             template=self.template,

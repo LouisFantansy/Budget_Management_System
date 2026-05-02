@@ -16,10 +16,13 @@ import type {
   ApiBudgetTemplate,
   ApiBudgetVersion,
   ApiCategory,
+  ApiCostCenter,
+  ApiGLAccount,
   ApiImportJob,
   ApiImportJobErrors,
   ApiNotification,
   ApiNotificationSummary,
+  ApiOptionSource,
   ApiPrimarySyncStatus,
   ApiTemplateField,
   ApiUser,
@@ -114,6 +117,7 @@ export const useWorkbenchStore = defineStore('workbench', {
     latestImportJob: null as ApiImportJob | null,
     importJobErrors: null as ApiImportJobErrors | null,
     notifications: [] as ApiNotification[],
+    users: [] as ApiUser[],
     notificationSummary: {
       total: 0,
       unread_count: 0,
@@ -153,6 +157,12 @@ export const useWorkbenchStore = defineStore('workbench', {
       name: '',
       projectCategoryId: '',
       productLineId: '',
+      departmentId: '',
+      expenseType: '',
+      mappedCategoryId: '',
+      mappedProjectCategoryId: '',
+      legacyName: '',
+      aliases: '',
     },
     masterData: {
       categories: [] as ApiCategory[],
@@ -161,7 +171,10 @@ export const useWorkbenchStore = defineStore('workbench', {
       projects: [] as ApiProject[],
       vendors: [] as ApiNamedMasterData[],
       regions: [] as ApiNamedMasterData[],
+      'cost-centers': [] as ApiCostCenter[],
+      'gl-accounts': [] as ApiGLAccount[],
     },
+    optionSources: [] as ApiOptionSource[],
     fieldErrors: {} as Record<string, string>,
     lineErrors: {} as Record<string, string>,
     recommendations: {} as Record<string, ApiPurchaseHistory[]>,
@@ -201,7 +214,7 @@ export const useWorkbenchStore = defineStore('workbench', {
       this.loading = true
       this.error = ''
       try {
-        const [cycles, departments, categories, projects, books, tasks, approvals] = await Promise.all([
+        const [cycles, departments, categories, projects, books, tasks, approvals, users] = await Promise.all([
           apiGet<PaginatedResponse<ApiBudgetCycle>>('/cycles/'),
           apiGet<PaginatedResponse<ApiDepartment>>('/departments/'),
           apiGet<PaginatedResponse<{ id: string; name: string }>>('/categories/'),
@@ -209,6 +222,7 @@ export const useWorkbenchStore = defineStore('workbench', {
           apiGet<PaginatedResponse<ApiBudgetBook>>('/budget-books/'),
           apiGet<PaginatedResponse<ApiBudgetTask>>('/budget-tasks/'),
           apiGet<PaginatedResponse<ApiApprovalRequest>>('/approval-requests/'),
+          apiGet<PaginatedResponse<ApiUser>>('/users/'),
         ])
 
         const activeCycle = cycles.results[0]
@@ -217,6 +231,7 @@ export const useWorkbenchStore = defineStore('workbench', {
         this.cycleStatus = activeCycle?.status_label ?? activeCycle?.status ?? ''
 
         this.departments = departments.results
+        this.users = users.results
         departments.results.forEach((item) => {
           departmentNames[item.id] = item.name
         })
@@ -1196,13 +1211,16 @@ export const useWorkbenchStore = defineStore('workbench', {
       this.loading = true
       this.error = ''
       try {
-        const [categories, projectCategories, productLines, projects, vendors, regions] = await Promise.all([
+        const [categories, projectCategories, productLines, projects, vendors, regions, costCenters, glAccounts, optionSources] = await Promise.all([
           apiGet<PaginatedResponse<ApiCategory>>('/categories/'),
           apiGet<PaginatedResponse<ApiNamedMasterData>>('/project-categories/'),
           apiGet<PaginatedResponse<ApiNamedMasterData>>('/product-lines/'),
           apiGet<PaginatedResponse<ApiProject>>('/projects/'),
           apiGet<PaginatedResponse<ApiNamedMasterData>>('/vendors/'),
           apiGet<PaginatedResponse<ApiNamedMasterData>>('/regions/'),
+          apiGet<PaginatedResponse<ApiCostCenter>>('/cost-centers/'),
+          apiGet<PaginatedResponse<ApiGLAccount>>('/gl-accounts/'),
+          apiGet<ApiOptionSource[]>('/option-sources/'),
         ])
         this.masterData.categories = categories.results
         this.masterData['project-categories'] = projectCategories.results
@@ -1210,6 +1228,9 @@ export const useWorkbenchStore = defineStore('workbench', {
         this.masterData.projects = projects.results
         this.masterData.vendors = vendors.results
         this.masterData.regions = regions.results
+        this.masterData['cost-centers'] = costCenters.results
+        this.masterData['gl-accounts'] = glAccounts.results
+        this.optionSources = optionSources
       } catch (error) {
         this.error = error instanceof Error ? error.message : '加载主数据失败'
       } finally {
@@ -1231,11 +1252,32 @@ export const useWorkbenchStore = defineStore('workbench', {
           name,
           project_category: this.masterDataKind === 'projects' ? this.masterDataDraft.projectCategoryId || null : undefined,
           product_line: this.masterDataKind === 'projects' ? this.masterDataDraft.productLineId || null : undefined,
+          department: this.masterDataKind === 'cost-centers' ? this.masterDataDraft.departmentId || null : undefined,
+          expense_type: this.masterDataKind === 'gl-accounts' ? this.masterDataDraft.expenseType || '' : undefined,
+          mapped_category: this.masterDataKind === 'gl-accounts' ? this.masterDataDraft.mappedCategoryId || null : undefined,
+          mapped_project_category: this.masterDataKind === 'gl-accounts' ? this.masterDataDraft.mappedProjectCategoryId || null : undefined,
+          legacy_name: this.masterDataDraft.legacyName.trim(),
+          aliases: this.masterDataDraft.aliases
+            .split(/[\n,|]/)
+            .map((item) => item.trim())
+            .filter(Boolean),
           level: this.masterDataKind === 'categories' ? 'category' : undefined,
           is_active: true,
+          keep_history: true,
           sort_order: 0,
         })
-        this.masterDataDraft = { code: '', name: '', projectCategoryId: '', productLineId: '' }
+        this.masterDataDraft = {
+          code: '',
+          name: '',
+          projectCategoryId: '',
+          productLineId: '',
+          departmentId: '',
+          expenseType: '',
+          mappedCategoryId: '',
+          mappedProjectCategoryId: '',
+          legacyName: '',
+          aliases: '',
+        }
         await this.loadMasterData()
       } catch (error) {
         this.error = error instanceof Error ? error.message : '新增主数据失败'
@@ -1270,6 +1312,28 @@ export const useWorkbenchStore = defineStore('workbench', {
       } finally {
         this.actionLoading = false
       }
+    },
+    resolveOptionValues(source: string) {
+      const normalized = source.trim()
+      if (!normalized) return []
+      if (normalized.includes('|')) {
+        return normalized
+          .split('|')
+          .map((item) => item.trim())
+          .filter(Boolean)
+          .map((item) => ({ value: item, label: item }))
+      }
+      if (normalized === 'masterdata.categories') return this.masterData.categories.map((item) => ({ value: item.code, label: item.name }))
+      if (normalized === 'masterdata.project_categories') return this.masterData['project-categories'].map((item) => ({ value: item.code, label: item.name }))
+      if (normalized === 'masterdata.product_lines') return this.masterData['product-lines'].map((item) => ({ value: item.code, label: item.name }))
+      if (normalized === 'masterdata.projects') return this.masterData.projects.map((item) => ({ value: item.code, label: item.name }))
+      if (normalized === 'masterdata.vendors') return this.masterData.vendors.map((item) => ({ value: item.code, label: item.name }))
+      if (normalized === 'masterdata.regions') return this.masterData.regions.map((item) => ({ value: item.code, label: item.name }))
+      if (normalized === 'masterdata.cost_centers') return this.masterData['cost-centers'].map((item) => ({ value: item.code, label: item.name }))
+      if (normalized === 'masterdata.gl_accounts') return this.masterData['gl-accounts'].map((item) => ({ value: item.code, label: item.name }))
+      if (normalized === 'masterdata.departments') return this.departments.map((item) => ({ value: item.code, label: item.name }))
+      if (normalized === 'system.users') return this.users.map((item) => ({ value: item.username, label: item.display_name || item.username }))
+      return []
     },
     captureLineValidationErrors(message: string) {
       const payload = extractJsonPayload(message)

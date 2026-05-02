@@ -4,7 +4,9 @@ from rest_framework.test import APITestCase
 
 from accounts.models import RoleAssignment, User
 
-from .models import Category, ProductLine, Project, ProjectCategory, PurchaseHistory, Region, Vendor
+from orgs.models import Department
+
+from .models import Category, CostCenter, GLAccount, OptionSourceRegistryEntry, ProductLine, Project, ProjectCategory, PurchaseHistory, Region, Vendor
 
 
 class MasterDataAPITests(APITestCase):
@@ -113,3 +115,55 @@ class MasterDataAPITests(APITestCase):
         self.assertEqual(len(response.data), 1)
         self.assertEqual(response.data[0]['purchase_name'], '研发云测试资源包')
         self.assertEqual(response.data[0]['recommended_price'], '120.00')
+
+    def test_can_create_cost_center(self):
+        department = Department.objects.create(name='Arch', code='ARCH-CC', level=Department.Level.SECONDARY, cost_center_code='CC100')
+
+        response = self.client.post(
+            reverse('costcenter-list'),
+            {'code': 'CC100', 'name': '架构成本中心', 'department': str(department.id)},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertTrue(CostCenter.objects.filter(code='CC100').exists())
+
+    def test_can_create_gl_account_mapping(self):
+        category = Category.objects.create(code='SW', name='Software', level=Category.Level.CATEGORY)
+        project_category = ProjectCategory.objects.create(code='PUBLIC', name='公共能力')
+
+        response = self.client.post(
+            reverse('glaccount-list'),
+            {
+                'code': 'GL100',
+                'name': '软件采购',
+                'expense_type': 'opex',
+                'mapped_category': str(category.id),
+                'mapped_project_category': str(project_category.id),
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        account = GLAccount.objects.get(code='GL100')
+        self.assertEqual(account.mapped_category, category)
+        self.assertEqual(account.mapped_project_category, project_category)
+
+    def test_option_source_catalog_returns_builtin_and_custom_entries(self):
+        OptionSourceRegistryEntry.objects.create(
+            code='masterdata.custom_demo',
+            label='自定义演示来源',
+            kind='masterdata',
+            endpoint='/custom-demo/',
+            value_field='code',
+            label_field='name',
+        )
+
+        response = self.client.get('/api/option-sources/')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        codes = {item['code'] for item in response.data}
+        self.assertIn('masterdata.projects', codes)
+        self.assertIn('masterdata.cost_centers', codes)
+        self.assertIn('masterdata.gl_accounts', codes)
+        self.assertIn('masterdata.custom_demo', codes)

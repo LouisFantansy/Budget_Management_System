@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from .models import Category, ProductLine, Project, ProjectCategory, PurchaseHistory, Region, Vendor
+from .models import Category, CostCenter, GLAccount, OptionSourceRegistryEntry, ProductLine, Project, ProjectCategory, PurchaseHistory, Region, Vendor
 
 
 class CategorySerializer(serializers.ModelSerializer):
@@ -36,6 +36,29 @@ class VendorSerializer(serializers.ModelSerializer):
 class RegionSerializer(serializers.ModelSerializer):
     class Meta:
         model = Region
+        fields = '__all__'
+
+
+class CostCenterSerializer(serializers.ModelSerializer):
+    department_name = serializers.CharField(source='department.name', read_only=True)
+
+    class Meta:
+        model = CostCenter
+        fields = '__all__'
+
+
+class GLAccountSerializer(serializers.ModelSerializer):
+    mapped_category_name = serializers.CharField(source='mapped_category.name', read_only=True)
+    mapped_project_category_name = serializers.CharField(source='mapped_project_category.name', read_only=True)
+
+    class Meta:
+        model = GLAccount
+        fields = '__all__'
+
+
+class OptionSourceRegistryEntrySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = OptionSourceRegistryEntry
         fields = '__all__'
 
 

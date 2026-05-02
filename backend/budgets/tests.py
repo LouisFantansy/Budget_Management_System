@@ -1045,6 +1045,30 @@ class BudgetImportExportAPITests(APITestCase):
         imported_line = BudgetLine.objects.get(budget_no='SECRET-001')
         self.assertEqual(imported_line.dynamic_data['secret_price'], '888.00')
 
+    def test_import_can_match_masterdata_by_alias(self):
+        self.category.aliases = ['云资源类']
+        self.category.save(update_fields=['aliases'])
+        self.vendor.aliases = ['亚马逊云']
+        self.vendor.save(update_fields=['aliases'])
+
+        self.client.force_authenticate(self.requester)
+        response = self.client.post(
+            reverse('importjob-list'),
+            {
+                'version': str(self.version.id),
+                'source_name': 'alias-import.tsv',
+                'mode': 'append',
+                'raw_text': self._valid_import_text_with_aliases('ALIAS-001'),
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data['status'], ImportJob.Status.SUCCESS)
+        imported_line = BudgetLine.objects.get(budget_no='ALIAS-001')
+        self.assertEqual(imported_line.category, self.category)
+        self.assertEqual(imported_line.vendor, self.vendor)
+
     def test_other_department_user_cannot_download_import_assets(self):
         self.client.force_authenticate(self.other_user)
 
@@ -1124,6 +1148,42 @@ class BudgetImportExportAPITests(APITestCase):
         values.extend(quantities)
         values.extend(amounts)
         values.extend(['业务增长', '888.00'])
+        return '\n'.join(['\t'.join(headers), '\t'.join(values)])
+
+    def _valid_import_text_with_aliases(self, budget_no):
+        headers = [
+            '预算编号', '预算部门', '成本中心代码', 'category', 'category L1', 'category L2', 'GL Amount',
+            'Project', 'Project Category', 'Product Line', '预算条目描述', '供应商', '采购原因', '地区',
+            '单价', '总数量', '总金额', '备注',
+        ]
+        headers.extend([f'{month}月采购数量' for month in range(1, 13)])
+        headers.extend([f'{month}月采购金额' for month in range(1, 13)])
+        headers.append('采购原因补充')
+        quantities = ['1'] + ['0'] * 11
+        amounts = ['100'] + ['0'] * 11
+        values = [
+            budget_no,
+            self.department.name,
+            'CC1001',
+            '云资源类',
+            self.category_l1.name,
+            self.category_l2.name,
+            'GL100',
+            self.project.name,
+            self.project_category.name,
+            self.product_line.name,
+            '别名导入测试',
+            '亚马逊云',
+            '扩容需求',
+            self.region.name,
+            '100',
+            '1',
+            '100',
+            '备注信息',
+        ]
+        values.extend(quantities)
+        values.extend(amounts)
+        values.append('业务增长')
         return '\n'.join(['\t'.join(headers), '\t'.join(values)])
 
     def _invalid_import_text(self):
