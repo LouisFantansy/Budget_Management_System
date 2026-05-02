@@ -8,6 +8,10 @@ PRIMARY_GLOBAL_ROLES = {
     RoleAssignment.Role.PRIMARY_DEPT_HEAD,
 }
 
+TEMPLATE_MANAGE_ROLES = {
+    RoleAssignment.Role.PRIMARY_BUDGET_ADMIN,
+}
+
 BUDGET_EDIT_ROLES = {
     RoleAssignment.Role.SECONDARY_BUDGET_ADMIN,
     RoleAssignment.Role.SECONDARY_BUDGET_OWNER,
@@ -53,6 +57,14 @@ def can_approve_department(user, department_id):
     if is_global_budget_user(user):
         return True
     return _has_scoped_role(user, APPROVER_ROLES, department_id)
+
+
+def can_manage_template_schema(user):
+    if not user or not user.is_authenticated:
+        return False
+    if user.is_superuser:
+        return True
+    return user.role_assignments.filter(role__in=TEMPLATE_MANAGE_ROLES).exists()
 
 
 def _has_scoped_role(user, roles, department_id):

@@ -22,6 +22,20 @@ function toggleRequired(field: (typeof store.templateFields)[number], event: Eve
   store.updateTemplateField(field, { required: target.checked })
 }
 
+function togglePrimaryVisibleOnly(field: (typeof store.templateFields)[number], event: Event) {
+  const target = event.target as HTMLInputElement
+  store.updateTemplateField(field, {
+    visible_rules: target.checked ? { visible_to: ['primary'] } : {},
+  })
+}
+
+function togglePrimaryEditableOnly(field: (typeof store.templateFields)[number], event: Event) {
+  const target = event.target as HTMLInputElement
+  store.updateTemplateField(field, {
+    editable_rules: target.checked ? { editable_by: ['primary'] } : {},
+  })
+}
+
 function updateFormulaInputType(event: Event) {
   const target = event.target as HTMLSelectElement
   store.templateFieldDraft.inputType = target.value as typeof store.templateFieldDraft.inputType
@@ -88,6 +102,14 @@ function deleteField(field: (typeof store.templateFields)[number]) {
             <input v-model="store.templateFieldDraft.required" type="checkbox" />
             必填
           </label>
+          <label>
+            <input v-model="store.templateFieldDraft.primaryVisibleOnly" type="checkbox" />
+            仅一级可见
+          </label>
+          <label>
+            <input v-model="store.templateFieldDraft.primaryEditableOnly" type="checkbox" />
+            仅一级可编辑
+          </label>
         </div>
         <div v-for="field in store.templateFields" :key="field.id">
           <ListChecks :size="16" />
@@ -96,6 +118,24 @@ function deleteField(field: (typeof store.templateFields)[number]) {
           <label class="field-required-toggle">
             <input :checked="field.required" type="checkbox" :disabled="store.actionLoading" @change="toggleRequired(field, $event)" />
             必填
+          </label>
+          <label class="field-required-toggle">
+            <input
+              :checked="field.visible_rules?.visible_to?.includes('primary') ?? false"
+              type="checkbox"
+              :disabled="store.actionLoading"
+              @change="togglePrimaryVisibleOnly(field, $event)"
+            />
+            仅一级可见
+          </label>
+          <label class="field-required-toggle">
+            <input
+              :checked="field.editable_rules?.editable_by?.includes('primary') ?? false"
+              type="checkbox"
+              :disabled="store.actionLoading || field.input_type === 'formula'"
+              @change="togglePrimaryEditableOnly(field, $event)"
+            />
+            仅一级可编辑
           </label>
           <button class="icon-button danger-icon" type="button" :disabled="store.actionLoading" @click="deleteField(field)">
             <Trash2 :size="15" />

@@ -127,7 +127,7 @@ class BudgetVersionViewSet(viewsets.ModelViewSet):
     @decorators.action(detail=True, methods=['get'], url_path='export-csv')
     def export_csv(self, request, pk=None):
         version = self.get_object()
-        csv_content = export_budget_version_csv(version)
+        csv_content = export_budget_version_csv(version, user=request.user)
         filename = f'budget-version-{version.id}.csv'
         response_obj = HttpResponse(csv_content, content_type='text/csv; charset=utf-8')
         response_obj['Content-Disposition'] = f'attachment; filename="{filename}"'
@@ -136,7 +136,7 @@ class BudgetVersionViewSet(viewsets.ModelViewSet):
     @decorators.action(detail=True, methods=['get'], url_path='import-template')
     def import_template(self, request, pk=None):
         version = self.get_object()
-        csv_content = export_budget_version_import_template_csv(version)
+        csv_content = export_budget_version_import_template_csv(version, user=request.user)
         filename = f'budget-version-{version.id}-import-template.csv'
         response_obj = HttpResponse(csv_content, content_type='text/csv; charset=utf-8')
         response_obj['Content-Disposition'] = f'attachment; filename="{filename}"'
@@ -145,7 +145,7 @@ class BudgetVersionViewSet(viewsets.ModelViewSet):
     @decorators.action(detail=True, methods=['get'], url_path='import-sample')
     def import_sample(self, request, pk=None):
         version = self.get_object()
-        csv_content = export_budget_version_import_sample_csv(version)
+        csv_content = export_budget_version_import_sample_csv(version, user=request.user)
         filename = f'budget-version-{version.id}-import-sample.csv'
         response_obj = HttpResponse(csv_content, content_type='text/csv; charset=utf-8')
         response_obj['Content-Disposition'] = f'attachment; filename="{filename}"'

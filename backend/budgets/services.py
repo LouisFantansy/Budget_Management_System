@@ -38,7 +38,7 @@ def submit_budget_version(version, requester, approver_ids=None, comment=''):
         raise ValidationError({'status': '只有 Draft 版本可以送审。'})
     if book.current_draft_id and book.current_draft_id != version.id:
         raise ValidationError({'current_draft': '预算表已有其他当前 Draft。'})
-    _validate_version_before_submit(version)
+    _validate_version_before_submit(version, user=requester)
 
     approvers = _resolve_budget_approvers(version, approver_ids)
     if not approvers:
@@ -93,11 +93,11 @@ def submit_budget_version(version, requester, approver_ids=None, comment=''):
     return approval_request
 
 
-def _validate_version_before_submit(version):
+def _validate_version_before_submit(version, user=None):
     template = version.book.template
     line_errors = {}
     for line in version.lines.all():
-        dynamic_errors = collect_dynamic_data_errors(template, line.dynamic_data)
+        dynamic_errors = collect_dynamic_data_errors(template, line.dynamic_data, user=user)
         if dynamic_errors:
             line_errors[str(line.id)] = {
                 'budget_no': line.budget_no,

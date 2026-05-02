@@ -44,6 +44,7 @@ function lineError(lineId: string | undefined) {
 const latestImportSummary = computed(() => store.latestImportJob?.summary.message ?? '')
 const isPrimaryConsolidated = computed(() => store.activeSourceType === 'primary_consolidated')
 const activeLines = computed(() => store.budgetLines.filter((line) => line.versionId === store.activeDraftVersionId))
+const visibleTemplateFields = computed(() => store.templateFields.filter((field) => field.user_permissions?.visible !== false))
 const selectedLine = computed(() => activeLines.value.find((line) => line.id === store.selectedLineId) ?? activeLines.value[0] ?? null)
 const totalActiveAmount = computed(() =>
   activeLines.value.reduce((sum, line) => sum + Number(line.totalAmount ?? 0), 0).toFixed(2),
@@ -237,7 +238,7 @@ function toggleSelectAll() {
       <article class="detail-section">
         <h3>动态字段</h3>
         <div v-if="store.templateFields.length" class="detail-meta-list">
-          <div v-for="field in store.templateFields" :key="`${selectedLine.id}-${field.id}-detail`">
+          <div v-for="field in visibleTemplateFields" :key="`${selectedLine.id}-${field.id}-detail`">
             <span>{{ field.label }}</span>
             <strong>{{ dynamicValue(selectedLine, field.code) }}</strong>
           </div>
@@ -315,7 +316,7 @@ function toggleSelectAll() {
     <div class="editor-table">
       <div
         class="editor-row editor-head"
-        :style="{ '--dynamic-columns': store.templateFields.length, '--source-columns': isPrimaryConsolidated ? 1 : 0, '--selection-columns': isPrimaryConsolidated ? 0 : 1 }"
+        :style="{ '--dynamic-columns': visibleTemplateFields.length, '--source-columns': isPrimaryConsolidated ? 1 : 0, '--selection-columns': isPrimaryConsolidated ? 0 : 1 }"
       >
         <span v-if="!isPrimaryConsolidated">
           <input type="checkbox" :checked="allEditableSelected" :disabled="store.actionLoading || !editableActiveLines.length" @change="toggleSelectAll" />
@@ -329,7 +330,7 @@ function toggleSelectAll() {
         <span>推荐价</span>
         <span>总数量</span>
         <span>总金额</span>
-        <span v-for="field in store.templateFields" :key="field.id">
+        <span v-for="field in visibleTemplateFields" :key="field.id">
           {{ field.label }}{{ field.required ? ' *' : '' }}
         </span>
         <span>状态</span>
@@ -341,7 +342,7 @@ function toggleSelectAll() {
         :key="line.id ?? line.budgetNo"
         class="editor-row"
         :class="{ 'has-row-error': !!lineError(line.id) }"
-        :style="{ '--dynamic-columns': store.templateFields.length, '--source-columns': isPrimaryConsolidated ? 1 : 0, '--selection-columns': isPrimaryConsolidated ? 0 : 1 }"
+        :style="{ '--dynamic-columns': visibleTemplateFields.length, '--source-columns': isPrimaryConsolidated ? 1 : 0, '--selection-columns': isPrimaryConsolidated ? 0 : 1 }"
       >
         <span v-if="!isPrimaryConsolidated">
           <input
@@ -375,9 +376,9 @@ function toggleSelectAll() {
         </span>
         <span>{{ line.totalQuantity ?? '0.00' }}</span>
         <strong>{{ line.amount }}</strong>
-        <span v-for="field in store.templateFields" :key="`${line.id}-${field.id}`" class="dynamic-cell">
+        <span v-for="field in visibleTemplateFields" :key="`${line.id}-${field.id}`" class="dynamic-cell">
           <input
-            v-if="isEditable(line) && field.input_type !== 'formula'"
+            v-if="isEditable(line) && store.canEditDynamicField(line, field)"
             class="cell-input"
             :type="field.data_type === 'date' ? 'date' : field.data_type === 'number' || field.data_type === 'money' ? 'number' : 'text'"
             :value="dynamicValue(line, field.code) === '-' ? '' : dynamicValue(line, field.code)"

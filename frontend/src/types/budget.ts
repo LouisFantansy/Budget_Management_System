@@ -53,6 +53,13 @@ export interface BudgetLinePreview {
   adminAnnotations?: Record<string, unknown>
   monthlyPlans?: BudgetMonthlyPlanPreview[]
   dynamicData?: Record<string, unknown>
+  fieldPermissions?: Record<
+    string,
+    {
+      visible: boolean
+      editable: boolean
+    }
+  >
   unitPrice?: string
   totalQuantity?: string
   totalAmount?: string
@@ -90,6 +97,13 @@ export interface ApiBudgetLine {
   total_quantity: string
   total_amount: string
   dynamic_data: Record<string, unknown>
+  field_permissions?: Record<
+    string,
+    {
+      visible: boolean
+      editable: boolean
+    }
+  >
   admin_annotations: Record<string, unknown>
   source_ref_type: string
   editable_by_secondary: boolean
@@ -107,6 +121,18 @@ export interface ApiTemplateField {
   order: number
   width: number
   formula: string
+  visible_rules?: {
+    visible_to?: Array<'primary' | 'secondary'>
+  }
+  editable_rules?: {
+    editable_by?: Array<'primary' | 'secondary'>
+  }
+  approval_included?: boolean
+  dashboard_enabled?: boolean
+  user_permissions?: {
+    visible: boolean
+    editable: boolean
+  }
 }
 
 export interface ApiBudgetTemplate {

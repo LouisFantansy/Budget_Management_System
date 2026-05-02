@@ -5,22 +5,23 @@ from decimal import Decimal, InvalidOperation
 
 from rest_framework.exceptions import ValidationError
 
+from budget_templates.access import template_fields_for_user
 from budget_templates.models import TemplateField
 
 
-def validate_dynamic_data(template, dynamic_data, formula_context=None):
+def validate_dynamic_data(template, dynamic_data, formula_context=None, user=None):
     dynamic_data, formula_errors = resolve_dynamic_data(template, dynamic_data, formula_context=formula_context)
-    errors = collect_dynamic_data_errors(template, dynamic_data)
+    errors = collect_dynamic_data_errors(template, dynamic_data, user=user)
     errors.update(formula_errors)
     if errors:
         raise ValidationError({'dynamic_data': errors})
     return dynamic_data
 
 
-def collect_dynamic_data_errors(template, dynamic_data):
+def collect_dynamic_data_errors(template, dynamic_data, user=None):
     errors = {}
     dynamic_data = dynamic_data or {}
-    fields = template.fields.all()
+    fields = template_fields_for_user(template, user, scope='input')
 
     for field in fields:
         value = dynamic_data.get(field.code)

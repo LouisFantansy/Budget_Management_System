@@ -8,6 +8,11 @@ from django.db import models
 from django.db import transaction
 from rest_framework.exceptions import ValidationError
 
+from budget_templates.access import (
+    can_user_input_template_field,
+    filter_dynamic_data_for_user,
+    template_fields_for_user,
+)
 from budget_templates.models import TemplateField
 from budget_templates.validation import collect_dynamic_data_errors, resolve_dynamic_data
 from masterdata.models import Category, ProductLine, Project, ProjectCategory, Region, Vendor
@@ -61,8 +66,8 @@ class ParsedImportRow:
     monthly_amounts: list[Decimal]
 
 
-def budget_version_import_header(version: BudgetVersion) -> list[str]:
-    template_fields = list(version.book.template.fields.order_by('order', 'code'))
+def budget_version_import_header(version: BudgetVersion, user=None) -> list[str]:
+    template_fields = template_fields_for_user(version.book.template, user, scope='visible')
     header = [
         '预算编号',
         '预算部门',
@@ -89,11 +94,11 @@ def budget_version_import_header(version: BudgetVersion) -> list[str]:
     return header
 
 
-def export_budget_version_csv(version: BudgetVersion) -> str:
+def export_budget_version_csv(version: BudgetVersion, user=None) -> str:
     buffer = io.StringIO()
     writer = csv.writer(buffer)
-    template_fields = list(version.book.template.fields.order_by('order', 'code'))
-    writer.writerow(budget_version_import_header(version))
+    template_fields = template_fields_for_user(version.book.template, user, scope='visible')
+    writer.writerow(budget_version_import_header(version, user=user))
 
     for line in version.lines.select_related(
         'category',
@@ -105,6 +110,7 @@ def export_budget_version_csv(version: BudgetVersion) -> str:
         'vendor',
         'region',
     ).prefetch_related('monthly_plans').all():
+        visible_dynamic_data = filter_dynamic_data_for_user(version.book.template, line.dynamic_data, user)
         monthly_map = {plan.month: plan for plan in line.monthly_plans.all()}
         row = [
             line.budget_no,
@@ -128,22 +134,22 @@ def export_budget_version_csv(version: BudgetVersion) -> str:
         ]
         row.extend([str(monthly_map.get(month).quantity if month in monthly_map else Decimal('0.00')) for month in range(1, 13)])
         row.extend([str(monthly_map.get(month).amount if month in monthly_map else Decimal('0.00')) for month in range(1, 13)])
-        row.extend([stringify_dynamic_value(line.dynamic_data.get(field.code)) for field in template_fields])
+        row.extend([stringify_dynamic_value(visible_dynamic_data.get(field.code)) for field in template_fields])
         writer.writerow(row)
     return buffer.getvalue()
 
 
-def export_budget_version_import_template_csv(version: BudgetVersion) -> str:
+def export_budget_version_import_template_csv(version: BudgetVersion, user=None) -> str:
     buffer = io.StringIO()
     writer = csv.writer(buffer)
-    writer.writerow(budget_version_import_header(version))
+    writer.writerow(budget_version_import_header(version, user=user))
     return buffer.getvalue()
 
 
-def export_budget_version_import_sample_csv(version: BudgetVersion) -> str:
+def export_budget_version_import_sample_csv(version: BudgetVersion, user=None) -> str:
     buffer = io.StringIO()
     writer = csv.writer(buffer)
-    template_fields = list(version.book.template.fields.order_by('order', 'code'))
+    template_fields = template_fields_for_user(version.book.template, user, scope='visible')
     sample_dynamic_data = _sample_dynamic_payload(template_fields)
     sample_dynamic_data, formula_errors = resolve_dynamic_data(
         version.book.template,
@@ -158,7 +164,7 @@ def export_budget_version_import_sample_csv(version: BudgetVersion) -> str:
     )
     if formula_errors:
         raise ValidationError({'dynamic_data': formula_errors})
-    writer.writerow(budget_version_import_header(version))
+    writer.writerow(budget_version_import_header(version, user=user))
     row = [
         'SAMPLE-001',
         version.book.department.name,
@@ -206,7 +212,7 @@ def import_budget_lines(version: BudgetVersion, requester, *, source_name: str, 
         if not rows:
             raise ValidationError({'rows': '导入内容为空。'})
 
-        parsed_rows, errors = _parse_rows(version, rows)
+        parsed_rows, errors = _parse_rows(version, rows, requester=requester)
         if errors:
             import_job.status = ImportJob.Status.FAILED
             import_job.error_rows = len(errors)
@@ -287,21 +293,21 @@ def _sample_dynamic_value(field):
     return '示例值'
 
 
-def _parse_rows(version: BudgetVersion, rows: list[dict[str, str]]):
+def _parse_rows(version: BudgetVersion, rows: list[dict[str, str]], requester=None):
     template_fields = list(version.book.template.fields.order_by('order', 'code'))
     parsed_rows: list[ParsedImportRow] = []
     errors = []
 
     for row_no, row in enumerate(rows, start=2):
         try:
-            parsed = _parse_single_row(version, row, template_fields)
+            parsed = _parse_single_row(version, row, template_fields, requester=requester)
             parsed_rows.append(parsed)
         except ValidationError as error:
             errors.append({'row': row_no, 'errors': error.detail})
     return parsed_rows, errors
 
 
-def _parse_single_row(version: BudgetVersion, row: dict[str, str], template_fields):
+def _parse_single_row(version: BudgetVersion, row: dict[str, str], template_fields, requester=None):
     raw = lambda *aliases: first_present_value(row, aliases)
     dynamic_data = {}
     errors = {}
@@ -331,6 +337,9 @@ def _parse_single_row(version: BudgetVersion, row: dict[str, str], template_fiel
         aliases.update({normalize_header(alias) for alias in field.import_aliases})
         value = first_present_value(row, aliases)
         if value == '':
+            continue
+        if not can_user_input_template_field(requester, field):
+            errors.setdefault('dynamic_data', {})[field.code] = '当前角色不可导入该字段。'
             continue
         try:
             normalized_value = _normalize_dynamic_value(field, value)
@@ -389,7 +398,7 @@ def _parse_single_row(version: BudgetVersion, row: dict[str, str], template_fiel
         dynamic_data,
         formula_context=formula_context,
     )
-    dynamic_errors = collect_dynamic_data_errors(version.book.template, dynamic_data)
+    dynamic_errors = collect_dynamic_data_errors(version.book.template, dynamic_data, user=requester)
     if dynamic_errors:
         errors.setdefault('dynamic_data', {}).update(dynamic_errors)
     if formula_errors:

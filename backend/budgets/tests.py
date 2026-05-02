@@ -295,6 +295,31 @@ class BudgetApprovalFlowAPITests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertEqual(response.data['dynamic_data']['purchase_reason'], '该字段必填。')
 
+    def test_secondary_user_submit_ignores_primary_only_required_field(self):
+        TemplateField.objects.create(
+            template=self.template,
+            code='purchase_reason',
+            label='采购原因',
+            data_type=TemplateField.DataType.TEXT,
+            required=True,
+        )
+        TemplateField.objects.create(
+            template=self.template,
+            code='secret_price',
+            label='保密单价',
+            data_type=TemplateField.DataType.MONEY,
+            required=True,
+            visible_rules={'visible_to': ['primary']},
+            editable_rules={'editable_by': ['primary']},
+        )
+        self.line.dynamic_data = {'purchase_reason': '扩容说明'}
+        self.line.save(update_fields=['dynamic_data'])
+        self.client.force_authenticate(self.requester)
+
+        response = self.client.post(reverse('budgetversion-submit', args=[self.version.id]), {}, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
     def test_template_dynamic_type_errors_are_reported_by_field(self):
         TemplateField.objects.create(
             template=self.template,
@@ -729,10 +754,15 @@ class BudgetImportExportAPITests(APITestCase):
         self.department = Department.objects.create(name='平台软件部', code='SW-IMPORT', level=Department.Level.SECONDARY)
         self.requester = User.objects.create_user(username='import-owner', password='pass')
         self.other_user = User.objects.create_user(username='other-owner', password='pass')
+        self.primary_user = User.objects.create_user(username='import-primary', password='pass')
         RoleAssignment.objects.create(
             user=self.requester,
             role=RoleAssignment.Role.SECONDARY_BUDGET_OWNER,
             department=self.department,
+        )
+        RoleAssignment.objects.create(
+            user=self.primary_user,
+            role=RoleAssignment.Role.PRIMARY_BUDGET_ADMIN,
         )
         other_department = Department.objects.create(name='硬件系统部', code='HW-IMPORT', level=Department.Level.SECONDARY)
         RoleAssignment.objects.create(
@@ -763,6 +793,16 @@ class BudgetImportExportAPITests(APITestCase):
             input_type=TemplateField.InputType.FORMULA,
             formula='unit_price * total_quantity',
             required=False,
+        )
+        TemplateField.objects.create(
+            template=self.template,
+            code='secret_price',
+            label='保密单价',
+            data_type=TemplateField.DataType.MONEY,
+            required=False,
+            visible_rules={'visible_to': ['primary']},
+            editable_rules={'editable_by': ['primary']},
+            import_aliases=['保密单价'],
         )
         self.book = BudgetBook.objects.create(
             cycle=self.cycle,
@@ -905,6 +945,31 @@ class BudgetImportExportAPITests(APITestCase):
         self.assertIn('预算部门', content)
         self.assertIn(self.department.name, content)
 
+    def test_secondary_export_hides_primary_only_dynamic_fields(self):
+        self.client.force_authenticate(self.requester)
+        self.existing_line.dynamic_data = {'purchase_reason': '已有补充', 'secret_price': '999.00'}
+        self.existing_line.save(update_fields=['dynamic_data'])
+
+        response = self.client.get(reverse('budgetversion-export-csv', args=[self.version.id]))
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        content = response.content.decode('utf-8')
+        self.assertIn('采购原因补充', content)
+        self.assertNotIn('保密单价', content)
+        self.assertNotIn('999.00', content)
+
+    def test_primary_export_keeps_primary_only_dynamic_fields(self):
+        self.client.force_authenticate(self.primary_user)
+        self.existing_line.dynamic_data = {'purchase_reason': '已有补充', 'secret_price': '999.00'}
+        self.existing_line.save(update_fields=['dynamic_data'])
+
+        response = self.client.get(reverse('budgetversion-export-csv', args=[self.version.id]))
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        content = response.content.decode('utf-8')
+        self.assertIn('保密单价', content)
+        self.assertIn('999.00', content)
+
     def test_can_download_import_template_csv(self):
         self.client.force_authenticate(self.requester)
 
@@ -921,6 +986,7 @@ class BudgetImportExportAPITests(APITestCase):
         self.assertIn('12月采购金额', header)
         self.assertIn('采购原因补充', header)
         self.assertIn('自动总额', header)
+        self.assertNotIn('保密单价', header)
 
     def test_can_download_import_sample_csv(self):
         self.client.force_authenticate(self.requester)
@@ -940,6 +1006,44 @@ class BudgetImportExportAPITests(APITestCase):
         self.assertEqual(sample[header.index('1月采购金额')], '100.00')
         self.assertEqual(sample[header.index('采购原因补充')], '示例值')
         self.assertEqual(sample[header.index('自动总额')], '100.00')
+        self.assertNotIn('保密单价', header)
+
+    def test_secondary_import_rejects_primary_only_field_column(self):
+        self.client.force_authenticate(self.requester)
+
+        response = self.client.post(
+            reverse('importjob-list'),
+            {
+                'version': str(self.version.id),
+                'source_name': 'invalid-secret.tsv',
+                'mode': 'append',
+                'raw_text': self._import_text_with_secret_value('NOPE-SECRET-001'),
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data['status'], ImportJob.Status.FAILED)
+        self.assertIn('dynamic_data', response.data['errors'][0]['errors'])
+
+    def test_primary_import_can_write_primary_only_field(self):
+        self.client.force_authenticate(self.primary_user)
+
+        response = self.client.post(
+            reverse('importjob-list'),
+            {
+                'version': str(self.version.id),
+                'source_name': 'secret-ok.tsv',
+                'mode': 'append',
+                'raw_text': self._import_text_with_secret_value('SECRET-001'),
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data['status'], ImportJob.Status.SUCCESS)
+        imported_line = BudgetLine.objects.get(budget_no='SECRET-001')
+        self.assertEqual(imported_line.dynamic_data['secret_price'], '888.00')
 
     def test_other_department_user_cannot_download_import_assets(self):
         self.client.force_authenticate(self.other_user)
@@ -984,6 +1088,42 @@ class BudgetImportExportAPITests(APITestCase):
         values.extend(quantities)
         values.extend(amounts)
         values.append('业务增长')
+        return '\n'.join(['\t'.join(headers), '\t'.join(values)])
+
+    def _import_text_with_secret_value(self, budget_no):
+        headers = [
+            '预算编号', '预算部门', '成本中心代码', 'category', 'category L1', 'category L2', 'GL Amount',
+            'Project', 'Project Category', 'Product Line', '预算条目描述', '供应商', '采购原因', '地区',
+            '单价', '总数量', '总金额', '备注',
+        ]
+        headers.extend([f'{month}月采购数量' for month in range(1, 13)])
+        headers.extend([f'{month}月采购金额' for month in range(1, 13)])
+        headers.extend(['采购原因补充', '保密单价'])
+        quantities = ['1'] + ['0'] * 11
+        amounts = ['100'] + ['0'] * 11
+        values = [
+            budget_no,
+            self.department.name,
+            'CC1001',
+            self.category.name,
+            self.category_l1.name,
+            self.category_l2.name,
+            'GL100',
+            self.project.name,
+            self.project_category.name,
+            self.product_line.name,
+            '研发云测试资源扩容',
+            self.vendor.name,
+            '扩容需求',
+            self.region.name,
+            '100',
+            '1',
+            '100',
+            '备注信息',
+        ]
+        values.extend(quantities)
+        values.extend(amounts)
+        values.extend(['业务增长', '888.00'])
         return '\n'.join(['\t'.join(headers), '\t'.join(values)])
 
     def _invalid_import_text(self):
@@ -1143,3 +1283,111 @@ class BudgetLineBulkOperationAPITests(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertTrue(BudgetLine.objects.filter(id=self.line_a.id).exists())
+
+
+class BudgetFieldPermissionAPITests(APITestCase):
+    def setUp(self):
+        self.department = Department.objects.create(name='PVE', code='PVE-FIELD', level=Department.Level.SECONDARY)
+        self.secondary_user = User.objects.create_user(username='field-secondary', password='pass')
+        self.primary_user = User.objects.create_user(username='field-primary', password='pass')
+        RoleAssignment.objects.create(
+            user=self.secondary_user,
+            role=RoleAssignment.Role.SECONDARY_BUDGET_OWNER,
+            department=self.department,
+        )
+        RoleAssignment.objects.create(
+            user=self.primary_user,
+            role=RoleAssignment.Role.PRIMARY_BUDGET_ADMIN,
+        )
+        self.cycle = BudgetCycle.objects.create(year=2031, name='2031 年度预算编制')
+        self.template = BudgetTemplate.objects.create(
+            cycle=self.cycle,
+            name='字段权限模板',
+            expense_type=BudgetTemplate.ExpenseType.OPEX,
+            status=BudgetTemplate.Status.ACTIVE,
+        )
+        TemplateField.objects.create(
+            template=self.template,
+            code='public_note',
+            label='公开说明',
+            data_type=TemplateField.DataType.TEXT,
+            required=True,
+        )
+        TemplateField.objects.create(
+            template=self.template,
+            code='secret_price',
+            label='保密单价',
+            data_type=TemplateField.DataType.MONEY,
+            visible_rules={'visible_to': ['primary']},
+            editable_rules={'editable_by': ['primary']},
+        )
+        TemplateField.objects.create(
+            template=self.template,
+            code='primary_review_comment',
+            label='一级复核意见',
+            data_type=TemplateField.DataType.TEXT,
+            editable_rules={'editable_by': ['primary']},
+        )
+        self.book = BudgetBook.objects.create(
+            cycle=self.cycle,
+            department=self.department,
+            expense_type=BudgetBook.ExpenseType.OPEX,
+            template=self.template,
+        )
+        self.version = BudgetVersion.objects.create(book=self.book, status=BudgetVersion.Status.DRAFT)
+        self.book.current_draft = self.version
+        self.book.save(update_fields=['current_draft'])
+        self.line = BudgetLine.objects.create(
+            version=self.version,
+            department=self.department,
+            line_no=1,
+            budget_no='FIELD-001',
+            description='字段权限条目',
+            dynamic_data={
+                'public_note': '公开字段',
+                'secret_price': '520.00',
+                'primary_review_comment': '一级初审',
+            },
+        )
+
+    def test_secondary_user_cannot_see_primary_only_fields_in_budget_line(self):
+        self.client.force_authenticate(self.secondary_user)
+
+        response = self.client.get(reverse('budgetline-detail', args=[self.line.id]))
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['dynamic_data']['public_note'], '公开字段')
+        self.assertNotIn('secret_price', response.data['dynamic_data'])
+        self.assertIn('public_note', response.data['field_permissions'])
+        self.assertNotIn('secret_price', response.data['field_permissions'])
+        self.assertFalse(response.data['field_permissions']['public_note']['editable'] is False)
+
+    def test_secondary_user_cannot_patch_primary_only_or_primary_readonly_field(self):
+        self.client.force_authenticate(self.secondary_user)
+
+        response = self.client.patch(
+            reverse('budgetline-detail', args=[self.line.id]),
+            {'dynamic_data': {'secret_price': '888.00', 'primary_review_comment': '越权修改'}},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('secret_price', response.data['dynamic_data'])
+        self.assertIn('primary_review_comment', response.data['dynamic_data'])
+        self.line.refresh_from_db()
+        self.assertEqual(self.line.dynamic_data['secret_price'], '520.00')
+        self.assertEqual(self.line.dynamic_data['primary_review_comment'], '一级初审')
+
+    def test_primary_user_can_patch_primary_only_field(self):
+        self.client.force_authenticate(self.primary_user)
+
+        response = self.client.patch(
+            reverse('budgetline-detail', args=[self.line.id]),
+            {'dynamic_data': {'secret_price': '888.00', 'primary_review_comment': '一级复核通过'}},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.line.refresh_from_db()
+        self.assertEqual(self.line.dynamic_data['secret_price'], '888.00')
+        self.assertEqual(self.line.dynamic_data['primary_review_comment'], '一级复核通过')

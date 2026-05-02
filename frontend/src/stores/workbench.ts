@@ -130,6 +130,8 @@ export const useWorkbenchStore = defineStore('workbench', {
       inputType: 'text' as ApiTemplateField['input_type'],
       formula: '',
       required: false,
+      primaryVisibleOnly: false,
+      primaryEditableOnly: false,
     },
     masterDataKind: 'categories' as MasterDataKind,
     masterDataDraft: {
@@ -246,6 +248,7 @@ export const useWorkbenchStore = defineStore('workbench', {
             adminAnnotations: line.admin_annotations,
             monthlyPlans: line.monthly_plans,
             dynamicData: line.dynamic_data,
+            fieldPermissions: line.field_permissions ?? {},
             unitPrice: line.unit_price,
             totalQuantity: line.total_quantity,
             totalAmount: line.total_amount,
@@ -825,6 +828,8 @@ export const useWorkbenchStore = defineStore('workbench', {
           input_type: this.templateFieldDraft.inputType,
           formula: this.templateFieldDraft.inputType === 'formula' ? this.templateFieldDraft.formula.trim() : '',
           required: this.templateFieldDraft.required,
+          visible_rules: this.templateFieldDraft.primaryVisibleOnly ? { visible_to: ['primary'] } : {},
+          editable_rules: this.templateFieldDraft.primaryEditableOnly ? { editable_by: ['primary'] } : {},
           order: nextOrder,
           width: 160,
         })
@@ -835,6 +840,8 @@ export const useWorkbenchStore = defineStore('workbench', {
           inputType: 'text',
           formula: '',
           required: false,
+          primaryVisibleOnly: false,
+          primaryEditableOnly: false,
         }
         await this.loadTemplateFields()
       } catch (error) {
@@ -843,7 +850,10 @@ export const useWorkbenchStore = defineStore('workbench', {
         this.actionLoading = false
       }
     },
-    async updateTemplateField(field: ApiTemplateField, patch: Partial<Pick<ApiTemplateField, 'label' | 'required'>>) {
+    async updateTemplateField(
+      field: ApiTemplateField,
+      patch: Partial<Pick<ApiTemplateField, 'label' | 'required' | 'visible_rules' | 'editable_rules'>>,
+    ) {
       this.actionLoading = true
       this.error = ''
       try {
@@ -870,7 +880,7 @@ export const useWorkbenchStore = defineStore('workbench', {
     defaultDynamicData() {
       return Object.fromEntries(
         this.templateFields
-          .filter((field) => field.required)
+          .filter((field) => field.required && field.user_permissions?.editable !== false)
           .map((field) => [field.code, defaultValueForField(field)]),
       )
     },
@@ -925,7 +935,7 @@ export const useWorkbenchStore = defineStore('workbench', {
       }
     },
     async updateDynamicField(line: BudgetLinePreview, field: ApiTemplateField, value: unknown) {
-      if (!this.canEditLine(line)) {
+      if (!this.canEditLine(line) || !this.canEditDynamicField(line, field)) {
         this.error = '只能编辑当前 Draft 版本的动态字段'
         return
       }
@@ -941,10 +951,16 @@ export const useWorkbenchStore = defineStore('workbench', {
       } catch (error) {
         const message = error instanceof Error ? error.message : '更新动态字段失败'
         this.error = message
-        this.fieldErrors[`${line.id}:${field.code}`] = message
+        const payload = extractJsonPayload(message)
+        const fieldMessage = payload?.dynamic_data?.[field.code]
+        this.fieldErrors[`${line.id}:${field.code}`] = typeof fieldMessage === 'string' ? fieldMessage : message
       } finally {
         this.actionLoading = false
       }
+    },
+    canEditDynamicField(line: BudgetLinePreview, field: ApiTemplateField) {
+      if (!this.canEditLine(line)) return false
+      return line.fieldPermissions?.[field.code]?.editable !== false && field.input_type !== 'formula'
     },
     async loadRecommendations(line: BudgetLinePreview) {
       if (!line.id || !line.description.trim()) return

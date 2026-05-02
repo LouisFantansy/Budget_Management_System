@@ -13,7 +13,14 @@ from .models import BudgetTemplate, TemplateField
 class TemplateFieldAPITests(APITestCase):
     def setUp(self):
         self.user = User.objects.create_user(username='template-admin', password='pass')
+        self.secondary_user = User.objects.create_user(username='template-secondary', password='pass')
         RoleAssignment.objects.create(user=self.user, role=RoleAssignment.Role.PRIMARY_BUDGET_ADMIN)
+        self.department = Department.objects.create(name='Arch', code='Arch-TF', level=Department.Level.SECONDARY)
+        RoleAssignment.objects.create(
+            user=self.secondary_user,
+            role=RoleAssignment.Role.SECONDARY_BUDGET_OWNER,
+            department=self.department,
+        )
         self.client.force_authenticate(self.user)
         self.cycle = BudgetCycle.objects.create(year=2027, name='2027 年度预算编制')
         self.template = BudgetTemplate.objects.create(
@@ -122,6 +129,66 @@ class TemplateFieldAPITests(APITestCase):
         self.assertEqual(field.label, '采购必要性')
         self.assertTrue(field.required)
 
+    def test_primary_budget_admin_can_update_field_visibility_rules(self):
+        field = TemplateField.objects.create(
+            template=self.template,
+            code='secret_price',
+            label='保密单价',
+            data_type=TemplateField.DataType.MONEY,
+        )
+
+        response = self.client.patch(
+            reverse('templatefield-detail', args=[field.id]),
+            {
+                'visible_rules': {'visible_to': ['primary']},
+                'editable_rules': {'editable_by': ['primary']},
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        field.refresh_from_db()
+        self.assertEqual(field.visible_rules, {'visible_to': ['primary']})
+        self.assertEqual(field.editable_rules, {'editable_by': ['primary']})
+
+    def test_secondary_budget_owner_cannot_manage_template_field(self):
+        self.client.force_authenticate(self.secondary_user)
+
+        response = self.client.post(
+            reverse('templatefield-list'),
+            {
+                'template': str(self.template.id),
+                'code': 'blocked_field',
+                'label': '无权限字段',
+                'data_type': TemplateField.DataType.TEXT,
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_secondary_budget_owner_only_sees_visible_template_fields(self):
+        visible_field = TemplateField.objects.create(
+            template=self.template,
+            code='shared_note',
+            label='共享说明',
+            data_type=TemplateField.DataType.TEXT,
+        )
+        hidden_field = TemplateField.objects.create(
+            template=self.template,
+            code='secret_price',
+            label='保密单价',
+            data_type=TemplateField.DataType.MONEY,
+            visible_rules={'visible_to': ['primary']},
+        )
+        self.client.force_authenticate(self.secondary_user)
+
+        response = self.client.get(reverse('templatefield-list'), {'template': str(self.template.id)})
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual([item['code'] for item in response.data['results']], [visible_field.code])
+        self.assertNotIn(hidden_field.code, [item['code'] for item in response.data['results']])
+
     def test_primary_budget_admin_can_delete_template_field(self):
         field = TemplateField.objects.create(
             template=self.template,
@@ -142,17 +209,16 @@ class TemplateFieldAPITests(APITestCase):
             label='采购原因',
             data_type=TemplateField.DataType.TEXT,
         )
-        department = Department.objects.create(name='Arch', code='Arch-TF', level=Department.Level.SECONDARY)
         book = BudgetBook.objects.create(
             cycle=self.cycle,
-            department=department,
+            department=self.department,
             expense_type=BudgetBook.ExpenseType.OPEX,
             template=self.template,
         )
         version = BudgetVersion.objects.create(book=book, status=BudgetVersion.Status.DRAFT)
         BudgetLine.objects.create(
             version=version,
-            department=department,
+            department=self.department,
             description='使用模板字段的预算行',
             dynamic_data={'purchase_reason': '扩容'},
         )

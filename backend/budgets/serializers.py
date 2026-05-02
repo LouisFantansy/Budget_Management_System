@@ -1,6 +1,12 @@
 from rest_framework import serializers
 
 from accounts.access import can_edit_department_budget, is_global_budget_user
+from budget_templates.access import (
+    can_user_edit_template_field,
+    can_user_input_template_field,
+    filter_dynamic_data_for_user,
+    template_fields_for_user,
+)
 from budget_templates.validation import resolve_dynamic_data, validate_dynamic_data
 from .models import AllocationUpload, BudgetBook, BudgetLine, BudgetMonthlyPlan, BudgetVersion, ImportJob
 
@@ -29,18 +35,23 @@ class BudgetMonthlyPlanSerializer(serializers.ModelSerializer):
         if request and not is_global_budget_user(request.user) and not instance.line.editable_by_secondary:
             raise serializers.ValidationError({'line': '该预算条目已锁定，需回到来源模块维护。'})
         updated = super().update(instance, validated_data)
-        recompute_budget_line_totals(updated.line)
+        recompute_budget_line_totals(updated.line, user=self._request_user())
         return updated
 
     def create(self, validated_data):
         line = validated_data['line']
         instance = super().create(validated_data)
-        recompute_budget_line_totals(line)
+        recompute_budget_line_totals(line, user=self._request_user())
         return instance
+
+    def _request_user(self):
+        request = self.context.get('request')
+        return getattr(request, 'user', None)
 
 
 class BudgetLineSerializer(serializers.ModelSerializer):
     monthly_plans = BudgetMonthlyPlanSerializer(many=True, read_only=True)
+    field_permissions = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = BudgetLine
@@ -59,6 +70,7 @@ class BudgetLineSerializer(serializers.ModelSerializer):
     def validate(self, attrs):
         version = attrs.get('version') or getattr(self.instance, 'version', None)
         if version:
+            self._validate_dynamic_field_editability(version.book.template, attrs)
             formula_context = self._formula_context(attrs)
             computed_dynamic_data, formula_errors = resolve_dynamic_data(
                 version.book.template,
@@ -68,7 +80,12 @@ class BudgetLineSerializer(serializers.ModelSerializer):
             if formula_errors:
                 raise serializers.ValidationError({'dynamic_data': formula_errors})
             attrs['dynamic_data'] = computed_dynamic_data
-            validate_dynamic_data(version.book.template, computed_dynamic_data, formula_context=formula_context)
+            validate_dynamic_data(
+                version.book.template,
+                computed_dynamic_data,
+                formula_context=formula_context,
+                user=self._request_user(),
+            )
             normalized_fields = recompute_budget_payload_fields(attrs, instance=self.instance)
             attrs.update(normalized_fields)
         return attrs
@@ -86,6 +103,24 @@ class BudgetLineSerializer(serializers.ModelSerializer):
             merged.update(validated_data['dynamic_data'] or {})
             validated_data['dynamic_data'] = merged
         return super().update(instance, validated_data)
+
+    def to_representation(self, instance):
+        payload = super().to_representation(instance)
+        template = instance.version.book.template
+        user = self._request_user()
+        payload['dynamic_data'] = filter_dynamic_data_for_user(template, payload.get('dynamic_data') or {}, user)
+        return payload
+
+    def get_field_permissions(self, obj):
+        user = self._request_user()
+        template = obj.version.book.template
+        permissions = {}
+        for field in template_fields_for_user(template, user, scope='visible'):
+            permissions[field.code] = {
+                'visible': True,
+                'editable': can_user_edit_template_field(user, field),
+            }
+        return permissions
 
     def create(self, validated_data):
         return super().create(validated_data)
@@ -114,6 +149,31 @@ class BudgetLineSerializer(serializers.ModelSerializer):
         context['monthly_quantities'] = monthly_quantities
         context['monthly_amounts'] = monthly_amounts
         return context
+
+    def _validate_dynamic_field_editability(self, template, attrs):
+        dynamic_patch = attrs.get('dynamic_data')
+        if not isinstance(dynamic_patch, dict):
+            return
+        request = self.context.get('request')
+        if request is None:
+            return
+        user = request.user
+        field_map = {field.code: field for field in template.fields.all()}
+        forbidden_codes = []
+        for code in dynamic_patch.keys():
+            field = field_map.get(code)
+            if field is None:
+                continue
+            if not can_user_input_template_field(user, field):
+                forbidden_codes.append(code)
+        if forbidden_codes:
+            raise serializers.ValidationError(
+                {'dynamic_data': {code: '当前角色不可编辑该字段。' for code in sorted(forbidden_codes)}}
+            )
+
+    def _request_user(self):
+        request = self.context.get('request')
+        return getattr(request, 'user', None)
 
 
 class BudgetVersionSerializer(serializers.ModelSerializer):
@@ -239,7 +299,7 @@ class AllocationUploadCreateSerializer(serializers.Serializer):
         self.fields['cycle'].queryset = BudgetCycle.objects.all()
 
 
-def recompute_budget_line_totals(line):
+def recompute_budget_line_totals(line, user=None):
     monthly_plans = list(line.monthly_plans.all())
     zero_quantity = line.total_quantity.__class__('0.00')
     zero_amount = line.total_amount.__class__('0.00')
@@ -262,7 +322,12 @@ def recompute_budget_line_totals(line):
     )
     if formula_errors:
         raise serializers.ValidationError({'dynamic_data': formula_errors})
-    validate_dynamic_data(line.version.book.template, computed_dynamic_data, formula_context=formula_context)
+    validate_dynamic_data(
+        line.version.book.template,
+        computed_dynamic_data,
+        formula_context=formula_context,
+        user=user,
+    )
     line.dynamic_data = computed_dynamic_data
     line.save(update_fields=['total_quantity', 'total_amount', 'dynamic_data', 'updated_at'])
     return line
