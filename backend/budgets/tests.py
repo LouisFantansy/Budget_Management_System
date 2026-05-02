@@ -356,6 +356,93 @@ class BudgetApprovalFlowAPITests(APITestCase):
         self.assertEqual(self.line.dynamic_data['purchase_reason'], '扩容')
         self.assertEqual(self.line.dynamic_data['estimated_price'], '1200.00')
 
+    def test_formula_field_is_computed_from_unit_price_and_total_quantity(self):
+        TemplateField.objects.create(
+            template=self.template,
+            code='auto_total',
+            label='自动总额',
+            data_type=TemplateField.DataType.MONEY,
+            input_type=TemplateField.InputType.FORMULA,
+            formula='unit_price * total_quantity',
+            required=False,
+        )
+        self.client.force_authenticate(self.requester)
+
+        response = self.client.post(
+            reverse('budgetline-list'),
+            {
+                'version': str(self.version.id),
+                'department': str(self.department.id),
+                'line_no': 2,
+                'budget_no': 'OPEX-003',
+                'description': '带公式条目',
+                'unit_price': '2500.00',
+                'total_quantity': '4.00',
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        line = BudgetLine.objects.get(id=response.data['id'])
+        self.assertEqual(str(line.total_amount), '10000.00')
+        self.assertEqual(line.dynamic_data['auto_total'], '10000.00')
+
+    def test_line_patch_recomputes_total_amount_from_unit_price_and_quantity(self):
+        self.client.force_authenticate(self.requester)
+
+        response = self.client.patch(
+            reverse('budgetline-detail', args=[self.line.id]),
+            {'unit_price': '5000.00', 'total_quantity': '4.00', 'total_amount': '1.00'},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.line.refresh_from_db()
+        self.assertEqual(str(self.line.total_amount), '20000.00')
+
+    def test_monthly_plan_change_recomputes_line_totals_and_formula_fields(self):
+        TemplateField.objects.create(
+            template=self.template,
+            code='monthly_total',
+            label='月度总额',
+            data_type=TemplateField.DataType.MONEY,
+            input_type=TemplateField.InputType.FORMULA,
+            formula='sum_month_amount()',
+        )
+        self.line.unit_price = '3000.00'
+        self.line.total_quantity = '0.00'
+        self.line.total_amount = '0.00'
+        self.line.save(update_fields=['unit_price', 'total_quantity', 'total_amount'])
+        self.client.force_authenticate(self.requester)
+
+        first_plan = self.client.post(
+            reverse('budgetmonthlyplan-list'),
+            {
+                'line': str(self.line.id),
+                'month': 1,
+                'quantity': '2.00',
+                'amount': '6000.00',
+            },
+            format='json',
+        )
+        second_plan = self.client.post(
+            reverse('budgetmonthlyplan-list'),
+            {
+                'line': str(self.line.id),
+                'month': 2,
+                'quantity': '1.00',
+                'amount': '3000.00',
+            },
+            format='json',
+        )
+
+        self.assertEqual(first_plan.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(second_plan.status_code, status.HTTP_201_CREATED)
+        self.line.refresh_from_db()
+        self.assertEqual(str(self.line.total_quantity), '3.00')
+        self.assertEqual(str(self.line.total_amount), '9000.00')
+        self.assertEqual(self.line.dynamic_data['monthly_total'], '9000.00')
+
     def test_dashboard_summary_uses_current_draft_when_requested(self):
         BudgetLine.objects.create(
             version=self.version,

@@ -66,6 +66,42 @@ class TemplateFieldAPITests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertTrue(TemplateField.objects.filter(template=self.template, code='purchase_reason').exists())
 
+    def test_primary_budget_admin_can_create_formula_field(self):
+        response = self.client.post(
+            reverse('templatefield-list'),
+            {
+                'template': str(self.template.id),
+                'code': 'auto_total',
+                'label': '自动总额',
+                'data_type': TemplateField.DataType.MONEY,
+                'input_type': TemplateField.InputType.FORMULA,
+                'formula': 'unit_price * total_quantity',
+                'required': False,
+                'order': 40,
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertTrue(TemplateField.objects.filter(template=self.template, code='auto_total').exists())
+
+    def test_formula_field_with_unknown_reference_is_rejected(self):
+        response = self.client.post(
+            reverse('templatefield-list'),
+            {
+                'template': str(self.template.id),
+                'code': 'bad_formula',
+                'label': '坏公式',
+                'data_type': TemplateField.DataType.MONEY,
+                'input_type': TemplateField.InputType.FORMULA,
+                'formula': 'unknown_field * 10',
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('formula', response.data)
+
     def test_primary_budget_admin_can_update_template_field(self):
         field = TemplateField.objects.create(
             template=self.template,
