@@ -169,4 +169,34 @@ class ImportJob(TimestampedModel):
     def __str__(self):
         return f'{self.version} - {self.get_status_display()}'
 
+
+class AllocationUpload(TimestampedModel):
+    class Status(models.TextChoices):
+        SUCCESS = 'success', '成功'
+        FAILED = 'failed', '失败'
+
+    cycle = models.ForeignKey('budget_cycles.BudgetCycle', on_delete=models.CASCADE, related_name='allocation_uploads')
+    requester = models.ForeignKey(
+        'accounts.User',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='allocation_uploads',
+    )
+    source_name = models.CharField(max_length=255, blank=True)
+    status = models.CharField(max_length=16, choices=Status.choices, default=Status.SUCCESS)
+    total_rows = models.PositiveIntegerField(default=0)
+    imported_rows = models.PositiveIntegerField(default=0)
+    error_rows = models.PositiveIntegerField(default=0)
+    summary = models.JSONField(default=dict, blank=True)
+    errors = models.JSONField(default=list, blank=True)
+
+    class Meta:
+        verbose_name = '集团分摊上传任务'
+        verbose_name_plural = '集团分摊上传任务'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'{self.cycle} - {self.source_name or "allocation"}'
+
 # Create your models here.

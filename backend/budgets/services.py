@@ -187,11 +187,23 @@ def pull_primary_consolidated_book(cycle, expense_type, requester=None):
         .filter(
             cycle=cycle,
             expense_type=expense_type,
-            source_type=BudgetBook.SourceType.SELF_BUILT,
+            source_type__in=[BudgetBook.SourceType.SELF_BUILT, BudgetBook.SourceType.GROUP_ALLOCATION],
             department__level=Department.Level.SECONDARY,
         )
         .exclude(latest_approved_version=None)
     )
+    if expense_type == BudgetBook.ExpenseType.OPEX:
+        source_books.extend(
+            list(
+                BudgetBook.objects.select_related('current_draft', 'department', 'template')
+                .filter(
+                    cycle=cycle,
+                    expense_type=expense_type,
+                    source_type=BudgetBook.SourceType.GROUP_ALLOCATION,
+                )
+                .exclude(current_draft=None)
+            )
+        )
     if not source_books:
         raise ValidationError({'latest_approved_version': '当前没有可拉取的已审批部门预算。'})
 
@@ -219,8 +231,14 @@ def pull_primary_consolidated_book(cycle, expense_type, requester=None):
     )
 
     line_no = 1
+    seen_book_ids = set()
     for source_book in source_books:
-        source_version = source_book.latest_approved_version
+        if source_book.id in seen_book_ids:
+            continue
+        seen_book_ids.add(source_book.id)
+        source_version = source_book.current_draft if source_book.source_type == BudgetBook.SourceType.GROUP_ALLOCATION else source_book.latest_approved_version
+        if not source_version:
+            continue
         for source_line in source_version.lines.prefetch_related('monthly_plans').all():
             copied_line = BudgetLine.objects.create(
                 version=draft,
@@ -249,7 +267,7 @@ def pull_primary_consolidated_book(cycle, expense_type, requester=None):
                     'source_version_id': str(source_version.id),
                     'source_department': source_book.department.code,
                 },
-                source_ref_type='budget_version',
+                source_ref_type=source_book.source_type if source_book.source_type == BudgetBook.SourceType.GROUP_ALLOCATION else 'budget_version',
                 source_ref_id=source_version.id,
                 editable_by_secondary=False,
             )
@@ -271,7 +289,9 @@ def pull_primary_consolidated_book(cycle, expense_type, requester=None):
     consolidated_book.status = BudgetBook.Status.DRAFTING
     consolidated_book.save(update_fields=['template', 'current_draft', 'status', 'updated_at'])
 
-    source_department_ids = [book.department_id for book in source_books]
+    source_department_ids = [
+        book.department_id for book in source_books if book.source_type == BudgetBook.SourceType.SELF_BUILT
+    ]
     from budget_cycles.models import BudgetTask
 
     BudgetTask.objects.filter(cycle=cycle, department_id__in=source_department_ids).update(

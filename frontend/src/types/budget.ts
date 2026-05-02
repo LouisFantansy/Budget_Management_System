@@ -323,3 +323,25 @@ export interface ApiNotificationSummary {
   unread_count: number
   latest_unread_title: string
 }
+
+export interface ApiAllocationUpload {
+  id: string
+  cycle: string
+  requester: number | null
+  requester_name: string
+  source_name: string
+  status: 'success' | 'failed'
+  total_rows: number
+  imported_rows: number
+  error_rows: number
+  summary: {
+    message?: string
+    book_id?: string
+    version_id?: string
+    departments?: string[]
+  }
+  errors: Array<{
+    row: number
+    errors: Record<string, unknown>
+  }>
+}

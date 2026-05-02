@@ -10,7 +10,7 @@ from budget_templates.models import BudgetTemplate, TemplateField
 from masterdata.models import Category, ProductLine, Project, ProjectCategory, Region, Vendor
 from orgs.models import Department
 
-from .models import BudgetBook, BudgetLine, BudgetMonthlyPlan, BudgetVersion, ImportJob
+from .models import AllocationUpload, BudgetBook, BudgetLine, BudgetMonthlyPlan, BudgetVersion, ImportJob
 
 
 class BudgetApprovalFlowAPITests(APITestCase):
@@ -500,15 +500,16 @@ class SeedDemoCommandTests(APITestCase):
         secondary_departments = set(
             Department.objects.filter(level=Department.Level.SECONDARY).values_list('code', flat=True)
         )
-        self.assertEqual(BudgetBook.objects.count(), 4)
+        self.assertEqual(BudgetBook.objects.count(), 5)
         self.assertEqual(Department.objects.get(code='SS').name, 'SS')
         self.assertEqual(
             secondary_departments,
             {'Arch', 'PVE', 'PE', 'STE', 'PHE', 'FTE', 'cSSD_FW', 'eSSD_FW', 'Embedded_FW', 'PDT'},
         )
-        self.assertEqual(statuses, ['approved', 'approved', 'draft', 'draft', 'submitted'])
+        self.assertEqual(statuses, ['approved', 'approved', 'draft', 'draft', 'draft', 'submitted'])
         self.assertEqual(BudgetVersion.objects.exclude(base_version=None).count(), 1)
         self.assertEqual(ApprovalRequest.objects.filter(status=ApprovalRequest.Status.PENDING).count(), 1)
+        self.assertEqual(AllocationUpload.objects.filter(status=AllocationUpload.Status.SUCCESS).count(), 2)
 
 
 class BudgetDataScopeAPITests(APITestCase):

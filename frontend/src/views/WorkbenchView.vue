@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { ArrowRight, CheckCircle2, Clock3, RefreshCw, ShieldCheck } from 'lucide-vue-next'
+import { ArrowRight, CheckCircle2, Clock3, Download, RefreshCw, ShieldCheck, UploadCloud } from 'lucide-vue-next'
 import { useWorkbenchStore } from '../stores/workbench'
 
 const store = useWorkbenchStore()
@@ -24,10 +24,16 @@ async function openTaskDraft(task: (typeof store.tasks)[number]) {
       <p class="eyebrow">{{ store.cycleName }}</p>
       <h1>预算工作台</h1>
     </div>
-    <button class="primary-button" type="button" :disabled="store.loading || store.actionLoading" @click="store.pullPrimaryConsolidated('opex')">
-      {{ store.actionLoading ? '拉取中' : '拉取一级总表' }}
-      <RefreshCw :size="17" />
-    </button>
+    <div class="button-group">
+      <button class="secondary-button" type="button" :disabled="store.loading || store.actionLoading" @click="store.downloadGroupAllocationTemplate">
+        <Download :size="17" />
+        集团分摊模板
+      </button>
+      <button class="primary-button" type="button" :disabled="store.loading || store.actionLoading" @click="store.pullPrimaryConsolidated('opex')">
+        {{ store.actionLoading ? '拉取中' : '拉取一级总表' }}
+        <RefreshCw :size="17" />
+      </button>
+    </div>
   </section>
 
   <p v-if="store.error" class="error-banner">{{ store.error }}</p>
@@ -98,6 +104,35 @@ async function openTaskDraft(task: (typeof store.tasks)[number]) {
         </div>
       </div>
     </article>
+  </section>
+
+  <section class="panel">
+    <div class="panel-title">
+      <div>
+        <p class="eyebrow">Group Allocation</p>
+        <h2>集团分摊导入</h2>
+      </div>
+      <UploadCloud :size="18" />
+    </div>
+    <div class="field-form import-toolbar">
+      <input v-model="store.allocationDraft.sourceName" placeholder="来源文件名，如 group-allocation.tsv" />
+      <button class="primary-button" type="button" :disabled="store.actionLoading" @click="store.importGroupAllocation">
+        导入集团分摊
+      </button>
+    </div>
+    <textarea
+      v-model="store.allocationDraft.rawText"
+      class="import-textarea"
+      placeholder="粘贴集团分摊表，至少包含 预算部门 / 预算编号 / 预算条目描述 / 总金额。"
+    ></textarea>
+    <div v-if="store.latestAllocationUpload" class="import-job-card">
+      <strong>最近上传：{{ store.latestAllocationUpload.source_name || '未命名分摊导入' }}</strong>
+      <span>
+        {{ store.latestAllocationUpload.status }} · 总行数 {{ store.latestAllocationUpload.total_rows }} · 成功
+        {{ store.latestAllocationUpload.imported_rows }} · 错误 {{ store.latestAllocationUpload.error_rows }}
+      </span>
+      <pre v-if="store.latestAllocationUpload.error_rows">{{ JSON.stringify(store.latestAllocationUpload.errors, null, 2) }}</pre>
+    </div>
   </section>
 
   <section class="panel">

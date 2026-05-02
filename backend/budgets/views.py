@@ -11,8 +11,9 @@ from .import_export import (
     export_budget_version_import_template_csv,
     import_budget_lines,
 )
-from .models import BudgetBook, BudgetLine, BudgetMonthlyPlan, BudgetVersion
+from .models import AllocationUpload, BudgetBook, BudgetLine, BudgetMonthlyPlan, BudgetVersion
 from .serializers import (
+    AllocationUploadSerializer,
     BudgetBookSerializer,
     BudgetLineSerializer,
     BudgetLineBulkActionSerializer,
@@ -255,5 +256,21 @@ class ImportJobViewSet(viewsets.ModelViewSet):
                 'errors': import_job.errors,
             }
         )
+
+
+class AllocationUploadViewSet(viewsets.ModelViewSet):
+    queryset = AllocationUpload.objects.select_related('cycle', 'requester').all()
+    serializer_class = AllocationUploadSerializer
+    filterset_fields = ['cycle', 'status']
+    http_method_names = ['get', 'head', 'options']
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        if is_global_budget_user(self.request.user):
+            return queryset
+        return queryset.none()
+
+    def get_serializer_class(self):
+        return AllocationUploadSerializer
 
 # Create your views here.

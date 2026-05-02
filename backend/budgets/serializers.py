@@ -2,7 +2,7 @@ from rest_framework import serializers
 
 from accounts.access import can_edit_department_budget
 from budget_templates.validation import validate_dynamic_data
-from .models import BudgetBook, BudgetLine, BudgetMonthlyPlan, BudgetVersion, ImportJob
+from .models import AllocationUpload, BudgetBook, BudgetLine, BudgetMonthlyPlan, BudgetVersion, ImportJob
 
 
 class BudgetMonthlyPlanSerializer(serializers.ModelSerializer):
@@ -158,3 +158,37 @@ class ImportJobCreateSerializer(serializers.Serializer):
     source_name = serializers.CharField(required=False, allow_blank=True, max_length=255)
     mode = serializers.ChoiceField(choices=ImportJob.Mode.choices, default=ImportJob.Mode.APPEND)
     raw_text = serializers.CharField()
+
+
+class AllocationUploadSerializer(serializers.ModelSerializer):
+    requester_name = serializers.SerializerMethodField(read_only=True)
+
+    class Meta:
+        model = AllocationUpload
+        fields = '__all__'
+        read_only_fields = [
+            'requester',
+            'status',
+            'total_rows',
+            'imported_rows',
+            'error_rows',
+            'summary',
+            'errors',
+        ]
+
+    def get_requester_name(self, obj):
+        if not obj.requester:
+            return ''
+        return obj.requester.display_name or obj.requester.username
+
+
+class AllocationUploadCreateSerializer(serializers.Serializer):
+    cycle = serializers.PrimaryKeyRelatedField(queryset=BudgetBook.objects.none())
+    source_name = serializers.CharField(required=False, allow_blank=True, max_length=255)
+    raw_text = serializers.CharField()
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        from budget_cycles.models import BudgetCycle
+
+        self.fields['cycle'].queryset = BudgetCycle.objects.all()

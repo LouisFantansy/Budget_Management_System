@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { apiDelete, apiGet, apiGetText, apiPatch, apiPost, type PaginatedResponse } from '../api/client'
 import type {
   ApiApprovalRequest,
+  ApiAllocationUpload,
   ApiBudgetBook,
   ApiDashboardApplyResponse,
   ApiDashboardConfig,
@@ -108,6 +109,11 @@ export const useWorkbenchStore = defineStore('workbench', {
       unread_count: 0,
       latest_unread_title: '',
     } as ApiNotificationSummary,
+    latestAllocationUpload: null as ApiAllocationUpload | null,
+    allocationDraft: {
+      sourceName: 'group-allocation.tsv',
+      rawText: '',
+    },
     importDraft: {
       sourceName: 'budget-import.tsv',
       mode: 'append' as ApiImportJob['mode'],
@@ -412,6 +418,62 @@ export const useWorkbenchStore = defineStore('workbench', {
         await this.load()
       } catch (error) {
         this.error = error instanceof Error ? error.message : '拉取一级总表失败'
+      } finally {
+        this.actionLoading = false
+      }
+    },
+    async downloadGroupAllocationTemplate() {
+      this.actionLoading = true
+      this.error = ''
+      try {
+        const cycle = await apiGet<PaginatedResponse<{ id: string; name: string }>>('/cycles/')
+        const activeCycle = cycle.results[0]
+        if (!activeCycle) {
+          this.error = '当前没有预算周期'
+          return
+        }
+        const content = await apiGetText(`/cycles/${activeCycle.id}/group-allocation-template/`)
+        const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' })
+        const url = window.URL.createObjectURL(blob)
+        const link = document.createElement('a')
+        link.href = url
+        link.download = `group-allocation-${activeCycle.id}.csv`
+        document.body.appendChild(link)
+        link.click()
+        link.remove()
+        window.URL.revokeObjectURL(url)
+      } catch (error) {
+        this.error = error instanceof Error ? error.message : '下载集团分摊模板失败'
+      } finally {
+        this.actionLoading = false
+      }
+    },
+    async importGroupAllocation() {
+      if (!this.allocationDraft.rawText.trim()) {
+        this.error = '请粘贴集团分摊数据后再导入'
+        return
+      }
+      this.actionLoading = true
+      this.error = ''
+      try {
+        const cycle = await apiGet<PaginatedResponse<{ id: string; name: string }>>('/cycles/')
+        const activeCycle = cycle.results[0]
+        if (!activeCycle) {
+          this.error = '当前没有预算周期'
+          return
+        }
+        this.latestAllocationUpload = await apiPost<ApiAllocationUpload>(`/cycles/${activeCycle.id}/import-group-allocation/`, {
+          source_name: this.allocationDraft.sourceName,
+          raw_text: this.allocationDraft.rawText,
+        })
+        if (this.latestAllocationUpload.status === 'failed') {
+          this.error = this.latestAllocationUpload.summary.message ?? '集团分摊导入失败'
+          return
+        }
+        this.allocationDraft.rawText = ''
+        await this.load()
+      } catch (error) {
+        this.error = error instanceof Error ? error.message : '导入集团分摊失败'
       } finally {
         this.actionLoading = false
       }

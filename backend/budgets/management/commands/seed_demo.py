@@ -6,6 +6,7 @@ from accounts.models import RoleAssignment, User
 from approvals.models import ApprovalRequest
 from budget_cycles.models import BudgetCycle, BudgetTask
 from budget_templates.models import BudgetTemplate, TemplateField
+from budgets.allocations import import_group_allocations
 from budgets.models import BudgetBook, BudgetLine, BudgetMonthlyPlan, BudgetVersion
 from budgets.services import create_revision_draft, submit_budget_version
 from masterdata.models import Category, ProductLine, Project, ProjectCategory, PurchaseHistory, Vendor
@@ -89,6 +90,7 @@ class Command(BaseCommand):
         self._book_with_version(cycle, arch, template, cloud, project, owner, approved=False)
         pve_book = self._book_with_version(cycle, pve, template, server, project, owner, approved=True)
         self._book_with_version(cycle, ss_public, template, software_cat, project, primary_admin, approved=True)
+        self._group_allocation_example(cycle, primary_admin)
         self._pending_book(cycle, template, cloud, project, owner, approver)
         self._revision_example(pve_book, owner)
         for department in [*departments.values(), ss_public]:
@@ -256,3 +258,17 @@ class Command(BaseCommand):
         if plan:
             plan.amount = Decimal('25000.00')
             plan.save(update_fields=['amount', 'updated_at'])
+
+    def _group_allocation_example(self, cycle, requester):
+        import_group_allocations(
+            cycle,
+            requester,
+            source_name='seed-group-allocation.tsv',
+            raw_text='\n'.join(
+                [
+                    '\t'.join(['预算部门', '预算编号', '预算条目描述', '总金额', '备注']),
+                    '\t'.join(['Arch', 'ALLOC-ARCH-001', '集团云资源分摊', '60000.00', 'seed']),
+                    '\t'.join(['PVE', 'ALLOC-PVE-001', '集团软件许可分摊', '40000.00', 'seed']),
+                ]
+            ),
+        )
