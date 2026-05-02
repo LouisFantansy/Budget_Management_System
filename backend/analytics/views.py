@@ -5,7 +5,7 @@ from rest_framework.exceptions import ValidationError
 from accounts.access import accessible_department_ids, is_global_budget_user
 from .models import DashboardConfig
 from .serializers import DashboardConfigSerializer
-from .services import budget_overview as build_budget_overview
+from .services import budget_drilldown, budget_overview as build_budget_overview
 
 
 class DashboardConfigViewSet(viewsets.ModelViewSet):
@@ -66,17 +66,49 @@ class DashboardConfigViewSet(viewsets.ModelViewSet):
         version_context = request.query_params.get('version_context', 'latest_approved')
         department_ids = None if is_global_budget_user(request.user) else accessible_department_ids(request.user)
         focus_department_id = request.query_params.get('focus_department_id')
+        expense_type = self._validated_expense_type(request.query_params.get('expense_type') or None)
         if focus_department_id:
             if department_ids is not None and focus_department_id not in {str(item_id) for item_id in department_ids}:
                 raise ValidationError({'focus_department_id': '没有权限查看该部门。'})
             department_ids = [focus_department_id]
-        return response.Response(build_budget_overview(version_context=version_context, department_ids=department_ids))
+        return response.Response(
+            build_budget_overview(
+                version_context=version_context,
+                department_ids=department_ids,
+                expense_type=expense_type,
+            )
+        )
+
+    @decorators.action(detail=False, methods=['get'], url_path='budget-drilldown')
+    def budget_drilldown(self, request):
+        version_context = request.query_params.get('version_context', 'latest_approved')
+        dimension = request.query_params.get('dimension', 'department')
+        value = request.query_params.get('value', '')
+        expense_type = self._validated_expense_type(request.query_params.get('expense_type') or None)
+        department_ids = None if is_global_budget_user(request.user) else accessible_department_ids(request.user)
+        focus_department_id = request.query_params.get('focus_department_id')
+        if focus_department_id:
+            if department_ids is not None and focus_department_id not in {str(item_id) for item_id in department_ids}:
+                raise ValidationError({'focus_department_id': '没有权限查看该部门。'})
+            department_ids = [focus_department_id]
+        try:
+            payload = budget_drilldown(
+                version_context=version_context,
+                department_ids=department_ids,
+                dimension=dimension,
+                value=value,
+                expense_type=expense_type,
+            )
+        except ValueError as error:
+            raise ValidationError({'dimension': str(error)}) from error
+        return response.Response(payload)
 
     @decorators.action(detail=True, methods=['get'], url_path='apply')
     def apply(self, request, pk=None):
         dashboard_config = self.get_object()
         department_ids = None if is_global_budget_user(request.user) else accessible_department_ids(request.user)
         focus_department_id = (dashboard_config.config or {}).get('focus_department_id')
+        expense_type = (dashboard_config.config or {}).get('expense_type') or None
         if focus_department_id:
             if department_ids is not None and focus_department_id not in {str(item_id) for item_id in department_ids}:
                 raise ValidationError({'focus_department_id': '没有权限查看该部门。'})
@@ -84,6 +116,7 @@ class DashboardConfigViewSet(viewsets.ModelViewSet):
         overview = build_budget_overview(
             version_context=dashboard_config.version_context,
             department_ids=department_ids,
+            expense_type=expense_type,
         )
         return response.Response(
             {
@@ -91,5 +124,12 @@ class DashboardConfigViewSet(viewsets.ModelViewSet):
                 'overview': overview,
             }
         )
+
+    def _validated_expense_type(self, expense_type):
+        if expense_type in ('', None):
+            return None
+        if expense_type not in {'opex', 'capex'}:
+            raise ValidationError({'expense_type': '不支持的费用类型。'})
+        return expense_type
 
 # Create your views here.

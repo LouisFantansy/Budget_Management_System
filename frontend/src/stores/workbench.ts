@@ -5,6 +5,7 @@ import type {
   ApiAllocationUpload,
   ApiBudgetBook,
   ApiBudgetCycle,
+  ApiDashboardDrilldown,
   ApiDashboardApplyResponse,
   ApiDashboardConfig,
   ApiDepartment,
@@ -29,6 +30,7 @@ import type {
   ApprovalItem,
   BudgetLinePreview,
   BudgetTask,
+  DashboardDrilldownDimension,
   DashboardScope,
   MasterDataKind,
   SummaryStat,
@@ -95,6 +97,9 @@ export const useWorkbenchStore = defineStore('workbench', {
     revisionSourceBookId: '',
     versionDiff: null as ApiVersionDiff | null,
     budgetOverview: null as ApiBudgetOverview | null,
+    dashboardExpenseType: '' as '' | 'opex' | 'capex',
+    dashboardDrilldown: null as ApiDashboardDrilldown | null,
+    dashboardDrilldownLoading: false,
     dashboardConfigs: [] as ApiDashboardConfig[],
     activeDashboardConfigId: '',
     dashboardFocusDepartmentId: '',
@@ -557,10 +562,14 @@ export const useWorkbenchStore = defineStore('workbench', {
         }
         this.versionContext = context
         const query = new URLSearchParams({ version_context: context })
+        if (this.dashboardExpenseType) {
+          query.set('expense_type', this.dashboardExpenseType)
+        }
         if (this.dashboardFocusDepartmentId) {
           query.set('focus_department_id', this.dashboardFocusDepartmentId)
         }
         this.budgetOverview = await apiGet<ApiBudgetOverview>(`/dashboard-configs/budget-overview/?${query.toString()}`)
+        this.dashboardDrilldown = null
       } catch (error) {
         this.error = error instanceof Error ? error.message : '加载预算看板失败'
       } finally {
@@ -600,7 +609,10 @@ export const useWorkbenchStore = defineStore('workbench', {
           scope: this.dashboardConfigDraft.scope,
           department: this.dashboardConfigDraft.scope === 'department' ? this.dashboardConfigDraft.departmentId || null : null,
           version_context: this.versionContext === 'current_draft' ? 'current_draft' : 'latest_approved',
-          config: { focus_department_id: this.dashboardFocusDepartmentId || null },
+          config: {
+            focus_department_id: this.dashboardFocusDepartmentId || null,
+            expense_type: this.dashboardExpenseType || null,
+          },
           is_default: this.dashboardConfigDraft.isDefault,
         })
         this.dashboardConfigDraft = { name: '', scope: 'personal', departmentId: '', isDefault: true }
@@ -619,12 +631,39 @@ export const useWorkbenchStore = defineStore('workbench', {
         this.activeDashboardConfigId = response.config.id
         this.versionContext = response.config.version_context
         this.dashboardFocusDepartmentId = response.config.config.focus_department_id ?? ''
+        this.dashboardExpenseType = response.config.config.expense_type ?? ''
         this.budgetOverview = response.overview
+        this.dashboardDrilldown = null
       } catch (error) {
         this.error = error instanceof Error ? error.message : '应用看板配置失败'
       } finally {
         this.loading = false
       }
+    },
+    async loadDashboardDrilldown(dimension: DashboardDrilldownDimension, value: string) {
+      this.dashboardDrilldownLoading = true
+      this.error = ''
+      try {
+        const query = new URLSearchParams({
+          version_context: this.versionContext === 'current_draft' ? 'current_draft' : 'latest_approved',
+          dimension,
+          value,
+        })
+        if (this.dashboardExpenseType) {
+          query.set('expense_type', this.dashboardExpenseType)
+        }
+        if (this.dashboardFocusDepartmentId) {
+          query.set('focus_department_id', this.dashboardFocusDepartmentId)
+        }
+        this.dashboardDrilldown = await apiGet<ApiDashboardDrilldown>(`/dashboard-configs/budget-drilldown/?${query.toString()}`)
+      } catch (error) {
+        this.error = error instanceof Error ? error.message : '加载看板下钻失败'
+      } finally {
+        this.dashboardDrilldownLoading = false
+      }
+    },
+    clearDashboardDrilldown() {
+      this.dashboardDrilldown = null
     },
     async loadTemplateFields() {
       if (!this.activeTemplateId) {

@@ -1,6 +1,7 @@
 from rest_framework import serializers
 
 from accounts.access import accessible_department_ids, is_global_budget_user
+from budgets.models import BudgetBook
 from orgs.models import Department
 from .models import DashboardConfig
 
@@ -52,6 +53,12 @@ class DashboardConfigSerializer(serializers.ModelSerializer):
             if not is_global_budget_user(user) and str(focus_department.id) not in accessible_ids:
                 raise serializers.ValidationError({'config': '只能保存当前有权限的部门筛选。'})
             config['focus_department_id'] = str(focus_department.id)
+
+        expense_type = config.get('expense_type')
+        if expense_type in ('', None):
+            config['expense_type'] = None
+        elif expense_type not in {BudgetBook.ExpenseType.OPEX, BudgetBook.ExpenseType.CAPEX}:
+            raise serializers.ValidationError({'config': '费用类型筛选无效。'})
 
         attrs['config'] = config
         return attrs

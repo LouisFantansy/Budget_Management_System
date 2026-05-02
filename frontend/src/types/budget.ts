@@ -240,6 +240,7 @@ export interface ApiVersionDiff {
 
 export interface ApiBudgetOverview {
   version_context: DashboardVersionContext
+  expense_type: '' | 'opex' | 'capex'
   line_count: number
   total_amount: string
   by_department: Array<{
@@ -254,11 +255,71 @@ export interface ApiBudgetOverview {
     line_count: number
     total_amount: string
   }>
+  by_project: Array<{
+    project_id: string
+    project_name: string
+    line_count: number
+    total_amount: string
+  }>
+  by_project_category: Array<{
+    project_category_id: string
+    project_category_name: string
+    line_count: number
+    total_amount: string
+  }>
+  by_product_line: Array<{
+    product_line_id: string
+    product_line_name: string
+    line_count: number
+    total_amount: string
+  }>
+  by_expense_type: Array<{
+    expense_type: '' | 'opex' | 'capex'
+    expense_type_label: string
+    line_count: number
+    total_amount: string
+  }>
   monthly: Array<{
     month: number
     amount: string
     quantity: string
   }>
+}
+
+export type DashboardDrilldownDimension =
+  | 'department'
+  | 'category'
+  | 'project'
+  | 'project_category'
+  | 'product_line'
+  | 'expense_type'
+  | 'month'
+
+export interface ApiDashboardDrilldownRow {
+  id: string
+  budget_no: string
+  description: string
+  department_name: string
+  category_name: string
+  project_name: string
+  project_category_name: string
+  product_line_name: string
+  expense_type: 'opex' | 'capex'
+  version_id: string
+  version_label: string
+  total_amount: string
+  total_quantity: string
+  month_count: number
+}
+
+export interface ApiDashboardDrilldown {
+  version_context: DashboardVersionContext
+  expense_type: '' | 'opex' | 'capex'
+  dimension: DashboardDrilldownDimension
+  value: string
+  line_count: number
+  total_amount: string
+  rows: ApiDashboardDrilldownRow[]
 }
 
 export interface ApiUser {
@@ -323,6 +384,7 @@ export interface ApiDashboardConfig {
   version_context: DashboardVersionContext
   config: {
     focus_department_id?: string | null
+    expense_type?: '' | 'opex' | 'capex' | null
   }
   is_default: boolean
 }
