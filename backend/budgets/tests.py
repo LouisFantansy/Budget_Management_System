@@ -755,6 +755,15 @@ class BudgetImportExportAPITests(APITestCase):
             required=True,
             import_aliases=['采购原因补充'],
         )
+        TemplateField.objects.create(
+            template=self.template,
+            code='auto_total',
+            label='自动总额',
+            data_type=TemplateField.DataType.MONEY,
+            input_type=TemplateField.InputType.FORMULA,
+            formula='unit_price * total_quantity',
+            required=False,
+        )
         self.book = BudgetBook.objects.create(
             cycle=self.cycle,
             department=self.department,
@@ -810,6 +819,7 @@ class BudgetImportExportAPITests(APITestCase):
         self.assertEqual(imported_line.vendor, self.vendor)
         self.assertEqual(imported_line.region, self.region)
         self.assertEqual(imported_line.dynamic_data['purchase_reason'], '业务增长')
+        self.assertEqual(imported_line.dynamic_data['auto_total'], '100.00')
         self.assertEqual(imported_line.monthly_plans.count(), 12)
         january_plan = imported_line.monthly_plans.get(month=1)
         self.assertEqual(str(january_plan.quantity), '1.00')
@@ -910,6 +920,7 @@ class BudgetImportExportAPITests(APITestCase):
         self.assertIn('1月采购数量', header)
         self.assertIn('12月采购金额', header)
         self.assertIn('采购原因补充', header)
+        self.assertIn('自动总额', header)
 
     def test_can_download_import_sample_csv(self):
         self.client.force_authenticate(self.requester)
@@ -928,6 +939,7 @@ class BudgetImportExportAPITests(APITestCase):
         self.assertEqual(sample[header.index('1月采购数量')], '1.00')
         self.assertEqual(sample[header.index('1月采购金额')], '100.00')
         self.assertEqual(sample[header.index('采购原因补充')], '示例值')
+        self.assertEqual(sample[header.index('自动总额')], '100.00')
 
     def test_other_department_user_cannot_download_import_assets(self):
         self.client.force_authenticate(self.other_user)

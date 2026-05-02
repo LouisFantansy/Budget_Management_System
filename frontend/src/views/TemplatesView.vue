@@ -22,6 +22,17 @@ function toggleRequired(field: (typeof store.templateFields)[number], event: Eve
   store.updateTemplateField(field, { required: target.checked })
 }
 
+function updateFormulaInputType(event: Event) {
+  const target = event.target as HTMLSelectElement
+  store.templateFieldDraft.inputType = target.value as typeof store.templateFieldDraft.inputType
+  if (store.templateFieldDraft.inputType === 'formula' && store.templateFieldDraft.dataType === 'text') {
+    store.templateFieldDraft.dataType = 'money'
+  }
+  if (store.templateFieldDraft.inputType !== 'formula') {
+    store.templateFieldDraft.formula = ''
+  }
+}
+
 function deleteField(field: (typeof store.templateFields)[number]) {
   if (window.confirm(`确认删除字段「${field.label}」？`)) {
     store.deleteTemplateField(field)
@@ -64,6 +75,15 @@ function deleteField(field: (typeof store.templateFields)[number]) {
             <option value="boolean">布尔</option>
             <option value="option">选项</option>
           </select>
+          <select :value="store.templateFieldDraft.inputType" @change="updateFormulaInputType">
+            <option value="text">普通输入</option>
+            <option value="formula">公式字段</option>
+          </select>
+          <input
+            v-if="store.templateFieldDraft.inputType === 'formula'"
+            v-model="store.templateFieldDraft.formula"
+            placeholder="公式，如 unit_price * total_quantity"
+          />
           <label>
             <input v-model="store.templateFieldDraft.required" type="checkbox" />
             必填
@@ -72,7 +92,7 @@ function deleteField(field: (typeof store.templateFields)[number]) {
         <div v-for="field in store.templateFields" :key="field.id">
           <ListChecks :size="16" />
           <input class="field-label-input" :value="field.label" :disabled="store.actionLoading" @change="renameField(field, $event)" />
-          <em>{{ field.code }} · {{ field.data_type }} · {{ field.required ? '必填' : '选填' }}</em>
+          <em>{{ field.code }} · {{ field.data_type }} · {{ field.input_type === 'formula' ? `公式: ${field.formula}` : field.required ? '必填' : '选填' }}</em>
           <label class="field-required-toggle">
             <input :checked="field.required" type="checkbox" :disabled="store.actionLoading" @change="toggleRequired(field, $event)" />
             必填

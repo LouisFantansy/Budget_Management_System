@@ -58,6 +58,7 @@ function sourceLabel(source: string) {
 }
 
 function defaultValueForField(field: ApiTemplateField) {
+  if (field.input_type === 'formula') return ''
   if (field.data_type === 'number' || field.data_type === 'money') return '0'
   if (field.data_type === 'date') return new Date().toISOString().slice(0, 10)
   if (field.data_type === 'boolean') return false
@@ -126,6 +127,8 @@ export const useWorkbenchStore = defineStore('workbench', {
       code: '',
       label: '',
       dataType: 'text' as ApiTemplateField['data_type'],
+      inputType: 'text' as ApiTemplateField['input_type'],
+      formula: '',
       required: false,
     },
     masterDataKind: 'categories' as MasterDataKind,
@@ -819,12 +822,20 @@ export const useWorkbenchStore = defineStore('workbench', {
           code,
           label,
           data_type: this.templateFieldDraft.dataType,
-          input_type: inputTypeForDataType(this.templateFieldDraft.dataType),
+          input_type: this.templateFieldDraft.inputType,
+          formula: this.templateFieldDraft.inputType === 'formula' ? this.templateFieldDraft.formula.trim() : '',
           required: this.templateFieldDraft.required,
           order: nextOrder,
           width: 160,
         })
-        this.templateFieldDraft = { code: '', label: '', dataType: 'text', required: false }
+        this.templateFieldDraft = {
+          code: '',
+          label: '',
+          dataType: 'text',
+          inputType: 'text',
+          formula: '',
+          required: false,
+        }
         await this.loadTemplateFields()
       } catch (error) {
         this.error = error instanceof Error ? error.message : '新增模板字段失败'
@@ -1156,12 +1167,6 @@ function normalizeDynamicValue(field: ApiTemplateField, value: unknown) {
   if (field.data_type === 'boolean') return Boolean(value)
   if (value === null || value === undefined) return ''
   return String(value)
-}
-
-function inputTypeForDataType(dataType: ApiTemplateField['data_type']) {
-  if (dataType === 'money' || dataType === 'number') return 'number'
-  if (dataType === 'date') return 'date'
-  return 'text'
 }
 
 function extractJsonPayload(message: string) {

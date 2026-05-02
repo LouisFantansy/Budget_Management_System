@@ -102,9 +102,11 @@ export interface ApiTemplateField {
   code: string
   label: string
   data_type: 'text' | 'number' | 'money' | 'date' | 'boolean' | 'option' | 'json'
+  input_type: 'text' | 'number' | 'select' | 'multi_select' | 'date' | 'formula' | 'user' | 'department' | 'project'
   required: boolean
   order: number
   width: number
+  formula: string
 }
 
 export interface ApiBudgetTemplate {

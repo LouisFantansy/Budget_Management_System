@@ -377,7 +377,7 @@ function toggleSelectAll() {
         <strong>{{ line.amount }}</strong>
         <span v-for="field in store.templateFields" :key="`${line.id}-${field.id}`" class="dynamic-cell">
           <input
-            v-if="isEditable(line)"
+            v-if="isEditable(line) && field.input_type !== 'formula'"
             class="cell-input"
             :type="field.data_type === 'date' ? 'date' : field.data_type === 'number' || field.data_type === 'money' ? 'number' : 'text'"
             :value="dynamicValue(line, field.code) === '-' ? '' : dynamicValue(line, field.code)"

@@ -8,7 +8,8 @@ from django.db import models
 from django.db import transaction
 from rest_framework.exceptions import ValidationError
 
-from budget_templates.validation import collect_dynamic_data_errors
+from budget_templates.models import TemplateField
+from budget_templates.validation import collect_dynamic_data_errors, resolve_dynamic_data
 from masterdata.models import Category, ProductLine, Project, ProjectCategory, Region, Vendor
 
 from .models import BudgetLine, BudgetMonthlyPlan, BudgetVersion, ImportJob
@@ -143,6 +144,20 @@ def export_budget_version_import_sample_csv(version: BudgetVersion) -> str:
     buffer = io.StringIO()
     writer = csv.writer(buffer)
     template_fields = list(version.book.template.fields.order_by('order', 'code'))
+    sample_dynamic_data = _sample_dynamic_payload(template_fields)
+    sample_dynamic_data, formula_errors = resolve_dynamic_data(
+        version.book.template,
+        sample_dynamic_data,
+        formula_context={
+            'unit_price': '100.00',
+            'total_quantity': '1.00',
+            'total_amount': '100.00',
+            'monthly_quantities': ['1.00'] + ['0.00'] * 11,
+            'monthly_amounts': ['100.00'] + ['0.00'] * 11,
+        },
+    )
+    if formula_errors:
+        raise ValidationError({'dynamic_data': formula_errors})
     writer.writerow(budget_version_import_header(version))
     row = [
         'SAMPLE-001',
@@ -166,7 +181,7 @@ def export_budget_version_import_sample_csv(version: BudgetVersion) -> str:
     ]
     row.extend(['1.00'] + ['0.00'] * 11)
     row.extend(['100.00'] + ['0.00'] * 11)
-    row.extend([_sample_dynamic_value(field) for field in template_fields])
+    row.extend([stringify_dynamic_value(sample_dynamic_data.get(field.code, '')) for field in template_fields])
     writer.writerow(row)
     return buffer.getvalue()
 
@@ -257,6 +272,8 @@ def stringify_dynamic_value(value):
 
 
 def _sample_dynamic_value(field):
+    if field.input_type == field.InputType.FORMULA:
+        return ''
     if field.data_type == field.DataType.BOOLEAN:
         return 'false'
     if field.data_type in {field.DataType.NUMBER, field.DataType.MONEY}:
@@ -308,6 +325,8 @@ def _parse_single_row(version: BudgetVersion, row: dict[str, str], template_fiel
             errors[f'month_{month}_amount'] = amount_error
 
     for field in template_fields:
+        if field.input_type == TemplateField.InputType.FORMULA:
+            continue
         aliases = {normalize_header(field.label), normalize_header(field.code)}
         aliases.update({normalize_header(alias) for alias in field.import_aliases})
         value = first_present_value(row, aliases)
@@ -358,9 +377,23 @@ def _parse_single_row(version: BudgetVersion, row: dict[str, str], template_fiel
         if field_error:
             errors[field_name] = field_error
 
+    formula_context = {
+        'unit_price': unit_price,
+        'total_quantity': total_quantity,
+        'total_amount': total_amount,
+        'monthly_quantities': [str(item) for item in monthly_quantities],
+        'monthly_amounts': [str(item) for item in monthly_amounts],
+    }
+    dynamic_data, formula_errors = resolve_dynamic_data(
+        version.book.template,
+        dynamic_data,
+        formula_context=formula_context,
+    )
     dynamic_errors = collect_dynamic_data_errors(version.book.template, dynamic_data)
     if dynamic_errors:
         errors.setdefault('dynamic_data', {}).update(dynamic_errors)
+    if formula_errors:
+        errors.setdefault('dynamic_data', {}).update(formula_errors)
 
     parsed = ParsedImportRow(
         department_name=raw('预算部门', 'department'),
@@ -501,3 +534,12 @@ def _normalize_dynamic_value(field, value: str):
             raise ValidationError(field_error)
         return str(decimal_value)
     return value.strip()
+
+
+def _sample_dynamic_payload(template_fields):
+    payload = {}
+    for field in template_fields:
+        sample = _sample_dynamic_value(field)
+        if sample != '':
+            payload[field.code] = sample
+    return payload
