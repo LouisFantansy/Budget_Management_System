@@ -261,3 +261,100 @@ def pull_primary_consolidated_book(cycle, expense_type, requester=None):
         status=BudgetTask.Status.PULLED_TO_PRIMARY
     )
     return draft
+
+
+@transaction.atomic
+def bulk_operate_budget_lines(version, line_ids, action, patch_data=None, request=None):
+    version = BudgetVersion.objects.select_for_update().select_related('book', 'book__template').get(id=version.id)
+    if version.status != BudgetVersion.Status.DRAFT:
+        raise ValidationError({'version': '只能在 Draft 版本下批量维护预算条目。'})
+
+    lines = list(
+        BudgetLine.objects.select_for_update()
+        .filter(version=version, id__in=line_ids)
+        .prefetch_related('monthly_plans')
+    )
+    requested_ids = {str(line_id) for line_id in line_ids}
+    found_ids = {str(line.id) for line in lines}
+    missing_ids = sorted(requested_ids - found_ids)
+    if missing_ids:
+        raise ValidationError({'line_ids': f'存在不属于当前 Draft 的预算条目: {", ".join(missing_ids)}'})
+
+    if action == 'delete':
+        deleted_count = len(lines)
+        BudgetLine.objects.filter(id__in=[line.id for line in lines]).delete()
+        return {'action': action, 'affected': deleted_count}
+
+    if action == 'duplicate':
+        return _duplicate_budget_lines(version, lines)
+
+    if action == 'patch':
+        return _patch_budget_lines(version, lines, patch_data or {}, request=request)
+
+    raise ValidationError({'action': '不支持的批量操作。'})
+
+
+def _duplicate_budget_lines(version, lines):
+    next_line_no = (
+        BudgetLine.objects.filter(version=version).aggregate(max_line_no=Max('line_no'))['max_line_no'] or 0
+    ) + 1
+    created_ids = []
+    for source_line in sorted(lines, key=lambda item: item.line_no):
+        copied_line = BudgetLine.objects.create(
+            version=version,
+            line_no=next_line_no,
+            budget_no=f'{source_line.budget_no}-COPY',
+            department=source_line.department,
+            cost_center_code=source_line.cost_center_code,
+            category=source_line.category,
+            category_l1=source_line.category_l1,
+            category_l2=source_line.category_l2,
+            gl_amount_code=source_line.gl_amount_code,
+            project=source_line.project,
+            project_category=source_line.project_category,
+            product_line=source_line.product_line,
+            description=f'{source_line.description}（复制）',
+            vendor=source_line.vendor,
+            reason=source_line.reason,
+            region=source_line.region,
+            unit_price=source_line.unit_price,
+            total_quantity=source_line.total_quantity,
+            total_amount=source_line.total_amount,
+            dynamic_data=source_line.dynamic_data,
+            local_comments=source_line.local_comments,
+            admin_annotations=source_line.admin_annotations,
+            source_ref_type=source_line.source_ref_type,
+            source_ref_id=source_line.source_ref_id,
+            editable_by_secondary=source_line.editable_by_secondary,
+        )
+        BudgetMonthlyPlan.objects.bulk_create(
+            [
+                BudgetMonthlyPlan(
+                    line=copied_line,
+                    month=plan.month,
+                    quantity=plan.quantity,
+                    amount=plan.amount,
+                )
+                for plan in source_line.monthly_plans.all()
+            ]
+        )
+        created_ids.append(str(copied_line.id))
+        next_line_no += 1
+    return {'action': 'duplicate', 'affected': len(created_ids), 'created_ids': created_ids}
+
+
+def _patch_budget_lines(version, lines, patch_data, request=None):
+    from .serializers import BudgetLineSerializer
+
+    updated_ids = []
+    for line in lines:
+        payload = dict(patch_data)
+        if 'local_comments' in patch_data:
+            merged_comments = dict(line.local_comments or {})
+            merged_comments.update(patch_data['local_comments'] or {})
+            payload['local_comments'] = merged_comments
+        serializer = BudgetLineSerializer(line, data=payload, partial=True, context={'request': request})
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        updated_ids.append(str(line.id))
+    return {'action': 'patch', 'affected': len(updated_ids), 'updated_ids': updated_ids}

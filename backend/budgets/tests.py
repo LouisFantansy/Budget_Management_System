@@ -857,3 +857,144 @@ class BudgetImportExportAPITests(APITestCase):
             '',
         ]
         return '\n'.join(['\t'.join(headers), '\t'.join(values)])
+
+
+class BudgetLineBulkOperationAPITests(APITestCase):
+    def setUp(self):
+        self.department = Department.objects.create(name='平台软件部', code='SW-BULK', level=Department.Level.SECONDARY)
+        self.requester = User.objects.create_user(username='bulk-owner', password='pass')
+        self.outsider = User.objects.create_user(username='bulk-outsider', password='pass')
+        RoleAssignment.objects.create(
+            user=self.requester,
+            role=RoleAssignment.Role.SECONDARY_BUDGET_OWNER,
+            department=self.department,
+        )
+        other_department = Department.objects.create(name='硬件系统部', code='HW-BULK', level=Department.Level.SECONDARY)
+        RoleAssignment.objects.create(
+            user=self.outsider,
+            role=RoleAssignment.Role.SECONDARY_BUDGET_OWNER,
+            department=other_department,
+        )
+        self.cycle = BudgetCycle.objects.create(year=2030, name='2030 年度预算编制')
+        self.template = BudgetTemplate.objects.create(
+            cycle=self.cycle,
+            name='OPEX 模板',
+            expense_type=BudgetTemplate.ExpenseType.OPEX,
+            status=BudgetTemplate.Status.ACTIVE,
+        )
+        TemplateField.objects.create(
+            template=self.template,
+            code='purchase_reason',
+            label='采购原因补充',
+            data_type=TemplateField.DataType.TEXT,
+            required=True,
+        )
+        self.book = BudgetBook.objects.create(
+            cycle=self.cycle,
+            department=self.department,
+            expense_type=BudgetBook.ExpenseType.OPEX,
+            template=self.template,
+        )
+        self.version = BudgetVersion.objects.create(book=self.book, status=BudgetVersion.Status.DRAFT)
+        self.book.current_draft = self.version
+        self.book.save(update_fields=['current_draft'])
+        self.line_a = BudgetLine.objects.create(
+            version=self.version,
+            department=self.department,
+            line_no=1,
+            budget_no='BULK-001',
+            description='批量条目一',
+            unit_price='100.00',
+            total_quantity='2.00',
+            total_amount='200.00',
+            dynamic_data={'purchase_reason': '原始原因A'},
+        )
+        BudgetMonthlyPlan.objects.create(line=self.line_a, month=1, quantity='2.00', amount='200.00')
+        self.line_b = BudgetLine.objects.create(
+            version=self.version,
+            department=self.department,
+            line_no=2,
+            budget_no='BULK-002',
+            description='批量条目二',
+            unit_price='300.00',
+            total_quantity='1.00',
+            total_amount='300.00',
+            dynamic_data={'purchase_reason': '原始原因B'},
+        )
+        BudgetMonthlyPlan.objects.create(line=self.line_b, month=2, quantity='1.00', amount='300.00')
+
+    def test_bulk_duplicate_copies_lines_and_monthly_plans(self):
+        self.client.force_authenticate(self.requester)
+
+        response = self.client.post(
+            reverse('budgetline-bulk'),
+            {
+                'action': 'duplicate',
+                'line_ids': [str(self.line_a.id), str(self.line_b.id)],
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['affected'], 2)
+        self.assertEqual(BudgetLine.objects.filter(version=self.version).count(), 4)
+        copied_line = BudgetLine.objects.get(budget_no='BULK-001-COPY')
+        self.assertEqual(copied_line.description, '批量条目一（复制）')
+        self.assertEqual(copied_line.monthly_plans.count(), 1)
+        self.assertEqual(copied_line.line_no, 3)
+
+    def test_bulk_delete_removes_selected_lines(self):
+        self.client.force_authenticate(self.requester)
+
+        response = self.client.post(
+            reverse('budgetline-bulk'),
+            {
+                'action': 'delete',
+                'line_ids': [str(self.line_b.id)],
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['affected'], 1)
+        self.assertFalse(BudgetLine.objects.filter(id=self.line_b.id).exists())
+        self.assertTrue(BudgetLine.objects.filter(id=self.line_a.id).exists())
+
+    def test_bulk_patch_updates_standard_and_dynamic_fields(self):
+        self.client.force_authenticate(self.requester)
+
+        response = self.client.post(
+            reverse('budgetline-bulk'),
+            {
+                'action': 'patch',
+                'line_ids': [str(self.line_a.id), str(self.line_b.id)],
+                'patch': {
+                    'reason': '统一说明',
+                    'dynamic_data': {'purchase_reason': '统一补充'},
+                },
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.line_a.refresh_from_db()
+        self.line_b.refresh_from_db()
+        self.assertEqual(self.line_a.reason, '统一说明')
+        self.assertEqual(self.line_b.reason, '统一说明')
+        self.assertEqual(self.line_a.dynamic_data['purchase_reason'], '统一补充')
+        self.assertEqual(self.line_b.dynamic_data['purchase_reason'], '统一补充')
+
+    def test_bulk_operation_rejects_user_without_scope(self):
+        self.client.force_authenticate(self.outsider)
+
+        response = self.client.post(
+            reverse('budgetline-bulk'),
+            {
+                'action': 'delete',
+                'line_ids': [str(self.line_a.id)],
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertTrue(BudgetLine.objects.filter(id=self.line_a.id).exists())

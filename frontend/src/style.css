@@ -650,6 +650,7 @@ h2 {
 
 .editor-row {
   grid-template-columns:
+    repeat(var(--selection-columns, 0), 28px)
     110px
     minmax(230px, 1.4fr)
     120px
@@ -681,6 +682,18 @@ h2 {
 
 .editor-panel {
   min-height: 520px;
+}
+
+.bulk-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.bulk-form {
+  grid-template-columns: minmax(180px, 1fr) minmax(220px, 1fr) minmax(180px, 1fr) auto;
+  align-items: center;
 }
 
 .import-toolbar {

@@ -10,12 +10,13 @@ from .models import BudgetBook, BudgetLine, BudgetMonthlyPlan, BudgetVersion
 from .serializers import (
     BudgetBookSerializer,
     BudgetLineSerializer,
+    BudgetLineBulkActionSerializer,
     BudgetMonthlyPlanSerializer,
     BudgetVersionSerializer,
     ImportJobCreateSerializer,
     ImportJobSerializer,
 )
-from .services import create_revision_draft, submit_budget_version
+from .services import bulk_operate_budget_lines, create_revision_draft, submit_budget_version
 
 
 class BudgetBookViewSet(viewsets.ModelViewSet):
@@ -136,6 +137,32 @@ class BudgetLineViewSet(viewsets.ModelViewSet):
         if not can_edit_department_budget(self.request.user, instance.version.book.department_id):
             raise ValidationError({'version': '没有权限删除该部门预算条目。'})
         super().perform_destroy(instance)
+
+    @decorators.action(detail=False, methods=['post'], url_path='bulk')
+    def bulk(self, request):
+        serializer = BudgetLineBulkActionSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        line_ids = serializer.validated_data['line_ids']
+        lines = list(BudgetLine.objects.select_related('version', 'version__book').filter(id__in=line_ids))
+        if not lines:
+            raise ValidationError({'line_ids': '未找到可批量操作的预算条目。'})
+
+        version_ids = {str(line.version_id) for line in lines}
+        if len(version_ids) != 1:
+            raise ValidationError({'line_ids': '批量操作只能作用于同一个 Draft 版本。'})
+
+        version = lines[0].version
+        if not can_edit_department_budget(request.user, version.book.department_id):
+            raise ValidationError({'version': '没有权限批量维护该部门预算条目。'})
+
+        result = bulk_operate_budget_lines(
+            version,
+            line_ids=line_ids,
+            action=serializer.validated_data['action'],
+            patch_data=serializer.validated_data.get('patch') or {},
+            request=request,
+        )
+        return response.Response(result, status=200)
 
 
 class BudgetMonthlyPlanViewSet(viewsets.ModelViewSet):

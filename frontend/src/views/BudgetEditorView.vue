@@ -48,6 +48,10 @@ const selectedLine = computed(() => activeLines.value.find((line) => line.id ===
 const totalActiveAmount = computed(() =>
   activeLines.value.reduce((sum, line) => sum + Number(line.totalAmount ?? 0), 0).toFixed(2),
 )
+const editableActiveLines = computed(() => activeLines.value.filter((line) => store.canEditLine(line)))
+const allEditableSelected = computed(
+  () => !!editableActiveLines.value.length && editableActiveLines.value.every((line) => store.isLineSelected(line.id)),
+)
 
 function openLineAction(line: (typeof store.budgetLines)[number]) {
   if (isPrimaryConsolidated.value) {
@@ -64,6 +68,14 @@ function lineStateLabel(line: (typeof store.budgetLines)[number]) {
 
 function lineStateLocked(line: (typeof store.budgetLines)[number]) {
   return !isPrimaryConsolidated.value && line.editableBySecondary === false
+}
+
+function toggleSelectAll() {
+  if (allEditableSelected.value) {
+    store.clearLineSelection()
+    return
+  }
+  store.selectAllActiveLines()
 }
 </script>
 
@@ -123,6 +135,35 @@ function lineStateLocked(line: (typeof store.budgetLines)[number]) {
         <span>当前总金额</span>
         <strong>¥ {{ totalActiveAmount }}</strong>
       </div>
+    </div>
+  </section>
+
+  <section v-if="!isPrimaryConsolidated" class="panel">
+    <div class="panel-title">
+      <div>
+        <p class="eyebrow">Bulk Operations</p>
+        <h2>批量维护</h2>
+      </div>
+      <span class="context-badge">已选 {{ store.selectedLineIds.length }} 条</span>
+    </div>
+    <div class="bulk-toolbar">
+      <button class="secondary-button" type="button" :disabled="store.actionLoading || !editableActiveLines.length" @click="toggleSelectAll">
+        {{ allEditableSelected ? '清空全选' : '全选当前 Draft' }}
+      </button>
+      <button class="secondary-button" type="button" :disabled="store.actionLoading || !store.selectedLineIds.length" @click="store.bulkDuplicateLines">
+        批量复制
+      </button>
+      <button class="secondary-button danger" type="button" :disabled="store.actionLoading || !store.selectedLineIds.length" @click="store.bulkDeleteLines">
+        批量删除
+      </button>
+    </div>
+    <div class="field-form bulk-form">
+      <input v-model="store.bulkEditDraft.reason" placeholder="统一写入采购原因说明（reason）" />
+      <input v-model="store.bulkEditDraft.purchaseReason" placeholder="统一写入采购原因补充（purchase_reason）" />
+      <input v-model="store.bulkEditDraft.comment" placeholder="统一写入批量备注" />
+      <button class="primary-button" type="button" :disabled="store.actionLoading || !store.selectedLineIds.length" @click="store.bulkPatchLines">
+        批量更新
+      </button>
     </div>
   </section>
 
@@ -268,8 +309,11 @@ function lineStateLocked(line: (typeof store.budgetLines)[number]) {
     <div class="editor-table">
       <div
         class="editor-row editor-head"
-        :style="{ '--dynamic-columns': store.templateFields.length, '--source-columns': isPrimaryConsolidated ? 1 : 0 }"
+        :style="{ '--dynamic-columns': store.templateFields.length, '--source-columns': isPrimaryConsolidated ? 1 : 0, '--selection-columns': isPrimaryConsolidated ? 0 : 1 }"
       >
+        <span v-if="!isPrimaryConsolidated">
+          <input type="checkbox" :checked="allEditableSelected" :disabled="store.actionLoading || !editableActiveLines.length" @change="toggleSelectAll" />
+        </span>
         <span>预算编号</span>
         <span>条目描述</span>
         <span>Category</span>
@@ -291,8 +335,16 @@ function lineStateLocked(line: (typeof store.budgetLines)[number]) {
         :key="line.id ?? line.budgetNo"
         class="editor-row"
         :class="{ 'has-row-error': !!lineError(line.id) }"
-        :style="{ '--dynamic-columns': store.templateFields.length, '--source-columns': isPrimaryConsolidated ? 1 : 0 }"
+        :style="{ '--dynamic-columns': store.templateFields.length, '--source-columns': isPrimaryConsolidated ? 1 : 0, '--selection-columns': isPrimaryConsolidated ? 0 : 1 }"
       >
+        <span v-if="!isPrimaryConsolidated">
+          <input
+            type="checkbox"
+            :checked="store.isLineSelected(line.id)"
+            :disabled="store.actionLoading || !store.canEditLine(line)"
+            @change="store.toggleLineSelection(line.id)"
+          />
+        </span>
         <span>{{ line.budgetNo }}</span>
         <strong>{{ line.description }}</strong>
         <span>{{ line.category }}</span>

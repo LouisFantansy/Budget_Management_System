@@ -294,3 +294,10 @@ export interface ApiImportJobErrors {
     errors: Record<string, unknown>
   }>
 }
+
+export interface ApiBudgetLineBulkResult {
+  action: 'delete' | 'duplicate' | 'patch'
+  affected: number
+  created_ids?: string[]
+  updated_ids?: string[]
+}

@@ -83,6 +83,54 @@ class BudgetBookSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 
+class BudgetLineBulkActionSerializer(serializers.Serializer):
+    class Action(serializers.ChoiceField):
+        pass
+
+    action = serializers.ChoiceField(choices=['delete', 'duplicate', 'patch'])
+    line_ids = serializers.ListField(child=serializers.UUIDField(), allow_empty=False)
+    patch = serializers.JSONField(required=False)
+
+    def validate(self, attrs):
+        action = attrs['action']
+        patch_data = attrs.get('patch')
+        if action != 'patch':
+            attrs['patch'] = {}
+            return attrs
+
+        if not isinstance(patch_data, dict) or not patch_data:
+            raise serializers.ValidationError({'patch': '批量更新必须提供 patch 字段。'})
+
+        allowed_fields = {
+            'budget_no',
+            'cost_center_code',
+            'gl_amount_code',
+            'category',
+            'category_l1',
+            'category_l2',
+            'project',
+            'project_category',
+            'product_line',
+            'description',
+            'vendor',
+            'reason',
+            'region',
+            'unit_price',
+            'total_quantity',
+            'total_amount',
+            'dynamic_data',
+            'local_comments',
+        }
+        invalid_fields = sorted(set(patch_data.keys()) - allowed_fields)
+        if invalid_fields:
+            raise serializers.ValidationError({'patch': f'不支持批量更新字段: {", ".join(invalid_fields)}'})
+        if 'dynamic_data' in patch_data and not isinstance(patch_data['dynamic_data'], dict):
+            raise serializers.ValidationError({'patch': 'dynamic_data 必须为对象。'})
+        if 'local_comments' in patch_data and not isinstance(patch_data['local_comments'], dict):
+            raise serializers.ValidationError({'patch': 'local_comments 必须为对象。'})
+        return attrs
+
+
 class ImportJobSerializer(serializers.ModelSerializer):
     requester_name = serializers.SerializerMethodField(read_only=True)
 

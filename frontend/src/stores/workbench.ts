@@ -7,6 +7,7 @@ import type {
   ApiDashboardConfig,
   ApiDepartment,
   ApiBudgetLine,
+  ApiBudgetLineBulkResult,
   ApiBudgetOverview,
   ApiBudgetTemplate,
   ApiBudgetVersion,
@@ -77,6 +78,12 @@ export const useWorkbenchStore = defineStore('workbench', {
     activeSourceType: '',
     activeTemplateId: '',
     selectedLineId: '',
+    selectedLineIds: [] as string[],
+    bulkEditDraft: {
+      reason: '',
+      purchaseReason: '',
+      comment: '',
+    },
     revisionSourceBookId: '',
     versionDiff: null as ApiVersionDiff | null,
     budgetOverview: null as ApiBudgetOverview | null,
@@ -676,6 +683,26 @@ export const useWorkbenchStore = defineStore('workbench', {
     selectLine(lineId?: string) {
       this.selectedLineId = lineId ?? ''
     },
+    toggleLineSelection(lineId?: string) {
+      if (!lineId) return
+      if (this.selectedLineIds.includes(lineId)) {
+        this.selectedLineIds = this.selectedLineIds.filter((item) => item !== lineId)
+        return
+      }
+      this.selectedLineIds = [...this.selectedLineIds, lineId]
+    },
+    selectAllActiveLines() {
+      this.selectedLineIds = this.budgetLines
+        .filter((line) => line.versionId === this.activeDraftVersionId && this.canEditLine(line))
+        .map((line) => line.id)
+        .filter((lineId): lineId is string => Boolean(lineId))
+    },
+    clearLineSelection() {
+      this.selectedLineIds = []
+    },
+    isLineSelected(lineId?: string) {
+      return !!lineId && this.selectedLineIds.includes(lineId)
+    },
     canEditLine(line: BudgetLinePreview) {
       if (!line.id || line.versionId !== this.activeDraftVersionId) {
         return false
@@ -748,6 +775,80 @@ export const useWorkbenchStore = defineStore('workbench', {
         await this.load()
       } catch (error) {
         this.error = error instanceof Error ? error.message : '应用推荐价失败'
+      } finally {
+        this.actionLoading = false
+      }
+    },
+    async bulkDeleteLines() {
+      if (!this.selectedLineIds.length) {
+        this.error = '请先选择要删除的预算条目'
+        return
+      }
+      this.actionLoading = true
+      this.error = ''
+      try {
+        await apiPost<ApiBudgetLineBulkResult>('/budget-lines/bulk/', {
+          action: 'delete',
+          line_ids: this.selectedLineIds,
+        })
+        this.clearLineSelection()
+        await this.load()
+      } catch (error) {
+        this.error = error instanceof Error ? error.message : '批量删除失败'
+      } finally {
+        this.actionLoading = false
+      }
+    },
+    async bulkDuplicateLines() {
+      if (!this.selectedLineIds.length) {
+        this.error = '请先选择要复制的预算条目'
+        return
+      }
+      this.actionLoading = true
+      this.error = ''
+      try {
+        await apiPost<ApiBudgetLineBulkResult>('/budget-lines/bulk/', {
+          action: 'duplicate',
+          line_ids: this.selectedLineIds,
+        })
+        await this.load()
+      } catch (error) {
+        this.error = error instanceof Error ? error.message : '批量复制失败'
+      } finally {
+        this.actionLoading = false
+      }
+    },
+    async bulkPatchLines() {
+      if (!this.selectedLineIds.length) {
+        this.error = '请先选择要批量修改的预算条目'
+        return
+      }
+      const patch: Record<string, unknown> = {}
+      if (this.bulkEditDraft.reason.trim()) {
+        patch.reason = this.bulkEditDraft.reason.trim()
+      }
+      if (this.bulkEditDraft.purchaseReason.trim()) {
+        patch.dynamic_data = { purchase_reason: this.bulkEditDraft.purchaseReason.trim() }
+      }
+      if (this.bulkEditDraft.comment.trim()) {
+        patch.local_comments = { batch_comment: this.bulkEditDraft.comment.trim() }
+      }
+      if (!Object.keys(patch).length) {
+        this.error = '请至少填写一个批量更新字段'
+        return
+      }
+      this.actionLoading = true
+      this.error = ''
+      try {
+        await apiPost<ApiBudgetLineBulkResult>('/budget-lines/bulk/', {
+          action: 'patch',
+          line_ids: this.selectedLineIds,
+          patch,
+        })
+        this.bulkEditDraft = { reason: '', purchaseReason: '', comment: '' }
+        await this.load()
+      } catch (error) {
+        this.error = error instanceof Error ? error.message : '批量更新失败'
       } finally {
         this.actionLoading = false
       }
@@ -855,9 +956,15 @@ export const useWorkbenchStore = defineStore('workbench', {
     syncSelectedLine() {
       const activeLines = this.budgetLines.filter((line) => line.versionId === this.activeDraftVersionId)
       if (activeLines.some((line) => line.id === this.selectedLineId)) {
+        this.selectedLineIds = this.selectedLineIds.filter((lineId) =>
+          activeLines.some((line) => line.id === lineId && this.canEditLine(line)),
+        )
         return
       }
       this.selectedLineId = activeLines[0]?.id ?? ''
+      this.selectedLineIds = this.selectedLineIds.filter((lineId) =>
+        activeLines.some((line) => line.id === lineId && this.canEditLine(line)),
+      )
     },
   },
 })
