@@ -63,6 +63,7 @@ localStorage.setItem('budget_basic_auth', btoa('primary-admin:password'))
 ### 页面
 
 - 工作台：预算状态、审批、条目预览，以及从任务直接进入对应 Draft 明细。
+- 工作台：已接入真实预算周期任务数据，支持一键分发预算任务。
 - 预算编制：预算行、动态模板字段、提交送审、创建修订、粘贴导入、CSV 导出和批量操作。
 - 一级总表明细：支持查看来源部门、来源版本、月度计划和动态字段详情。
 - 审批中心：通过和退回，并区分二级审批、一级初审、一级终审阶段。
@@ -93,6 +94,8 @@ npm run build
 - `manage.py test`：97 通过
 - `manage.py test budget_cycles budgets`：53 通过
 - `manage.py test approvals budgets budget_cycles notifications`：60 通过
+- `manage.py test budget_cycles`：12 通过
+- `manage.py test budget_cycles budgets approvals notifications`：65 通过
 - `manage.py test masterdata`：6 通过
 - `manage.py test analytics`：13 通过
 - `manage.py test budgets`：48 通过

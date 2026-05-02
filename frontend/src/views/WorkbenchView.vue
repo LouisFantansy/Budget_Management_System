@@ -23,8 +23,13 @@ async function openTaskDraft(task: (typeof store.tasks)[number]) {
     <div>
       <p class="eyebrow">{{ store.cycleName }}</p>
       <h1>预算工作台</h1>
+      <p class="empty-note">周期状态：{{ store.cycleStatus || '未配置' }}</p>
     </div>
     <div class="button-group">
+      <button class="secondary-button" type="button" :disabled="store.loading || store.actionLoading" @click="store.distributeCycleTasks">
+        <RefreshCw :size="17" />
+        分发预算任务
+      </button>
       <button class="secondary-button" type="button" :disabled="store.loading || store.actionLoading" @click="store.downloadGroupAllocationTemplate">
         <Download :size="17" />
         集团分摊模板
@@ -78,6 +83,7 @@ async function openTaskDraft(task: (typeof store.tasks)[number]) {
             <span>
               {{ task.owner }} · {{ task.version }}
               <template v-if="task.sourceType === 'primary_consolidated'"> · 一级总表</template>
+              <template v-if="task.expenseType"> · {{ task.expenseType.toUpperCase() }}</template>
             </span>
           </div>
           <span class="status-chip">{{ task.status }}</span>

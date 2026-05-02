@@ -11,6 +11,144 @@ from orgs.models import Department
 from .models import BudgetCycle, BudgetTask
 
 
+class BudgetTaskDistributionAPITests(APITestCase):
+    def setUp(self):
+        self.primary = Department.objects.create(name='SS', code='SS-DIST', level=Department.Level.PRIMARY)
+        self.arch = Department.objects.create(name='Arch', code='Arch-DIST', level=Department.Level.SECONDARY, parent=self.primary, sort_order=10)
+        self.pve = Department.objects.create(name='PVE', code='PVE-DIST', level=Department.Level.SECONDARY, parent=self.primary, sort_order=20)
+        self.ss_public = Department.objects.create(name='SS public', code='SS_PUBLIC_DIST', level=Department.Level.SS_PUBLIC, parent=self.primary, sort_order=900)
+
+        self.primary_admin = User.objects.create_user(username='primary-dist-admin', password='password')
+        self.arch_owner = User.objects.create_user(username='arch-owner', password='password')
+        self.pve_admin = User.objects.create_user(username='pve-admin', password='password')
+        self.secondary_user = User.objects.create_user(username='secondary-viewer', password='password')
+
+        RoleAssignment.objects.create(user=self.primary_admin, role=RoleAssignment.Role.PRIMARY_BUDGET_ADMIN, department=self.primary)
+        RoleAssignment.objects.create(user=self.arch_owner, role=RoleAssignment.Role.SECONDARY_BUDGET_OWNER, department=self.arch)
+        RoleAssignment.objects.create(user=self.pve_admin, role=RoleAssignment.Role.SECONDARY_BUDGET_ADMIN, department=self.pve)
+        RoleAssignment.objects.create(user=self.secondary_user, role=RoleAssignment.Role.SECONDARY_BUDGET_OWNER, department=self.arch)
+
+        self.cycle = BudgetCycle.objects.create(year=2028, name='2028 年度预算编制', status=BudgetCycle.Status.DRAFT)
+        self.opex_template = BudgetTemplate.objects.create(
+            cycle=self.cycle,
+            name='OPEX 模板',
+            expense_type=BudgetTemplate.ExpenseType.OPEX,
+            status=BudgetTemplate.Status.ACTIVE,
+        )
+        self.capex_template = BudgetTemplate.objects.create(
+            cycle=self.cycle,
+            name='CAPEX 模板',
+            expense_type=BudgetTemplate.ExpenseType.CAPEX,
+            status=BudgetTemplate.Status.ACTIVE,
+        )
+
+    def test_primary_admin_can_distribute_cycle_tasks_and_create_books_and_drafts(self):
+        self.client.force_authenticate(self.primary_admin)
+
+        response = self.client.post(
+            reverse('budgetcycle-distribute-tasks', args=[self.cycle.id]),
+            {'due_at': '2026-06-01T00:00:00Z'},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.cycle.refresh_from_db()
+        self.assertEqual(self.cycle.status, BudgetCycle.Status.ACTIVE)
+        self.assertEqual(response.data['department_count'], 3)
+        self.assertEqual(response.data['template_count'], 2)
+        self.assertEqual(response.data['created_tasks'], 3)
+        self.assertEqual(response.data['created_books'], 6)
+        self.assertEqual(response.data['created_drafts'], 6)
+
+        arch_task = BudgetTask.objects.get(cycle=self.cycle, department=self.arch)
+        pve_task = BudgetTask.objects.get(cycle=self.cycle, department=self.pve)
+        ss_public_task = BudgetTask.objects.get(cycle=self.cycle, department=self.ss_public)
+        self.assertEqual(arch_task.owner, self.arch_owner)
+        self.assertEqual(pve_task.owner, self.pve_admin)
+        self.assertEqual(ss_public_task.owner, self.primary_admin)
+        self.assertEqual(arch_task.status, BudgetTask.Status.DRAFTING)
+        self.assertIsNotNone(arch_task.due_at)
+
+        self.assertEqual(
+            BudgetBook.objects.filter(cycle=self.cycle, department=self.arch, source_type=BudgetBook.SourceType.SELF_BUILT).count(),
+            2,
+        )
+        self.assertEqual(
+            BudgetBook.objects.filter(cycle=self.cycle, department=self.ss_public, source_type=BudgetBook.SourceType.SS_PUBLIC).count(),
+            2,
+        )
+        self.assertEqual(
+            BudgetVersion.objects.filter(book__cycle=self.cycle, status=BudgetVersion.Status.DRAFT).count(),
+            6,
+        )
+
+    def test_distribution_is_idempotent_for_existing_books_and_tasks(self):
+        self.client.force_authenticate(self.primary_admin)
+        first = self.client.post(reverse('budgetcycle-distribute-tasks', args=[self.cycle.id]), {}, format='json')
+        self.assertEqual(first.status_code, status.HTTP_201_CREATED)
+
+        second = self.client.post(reverse('budgetcycle-distribute-tasks', args=[self.cycle.id]), {}, format='json')
+
+        self.assertEqual(second.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(BudgetTask.objects.filter(cycle=self.cycle).count(), 3)
+        self.assertEqual(BudgetBook.objects.filter(cycle=self.cycle).count(), 6)
+        self.assertEqual(second.data['created_tasks'], 0)
+        self.assertEqual(second.data['created_books'], 0)
+        self.assertEqual(second.data['created_drafts'], 0)
+
+    def test_secondary_user_cannot_distribute_cycle_tasks(self):
+        self.client.force_authenticate(self.secondary_user)
+
+        response = self.client.post(reverse('budgetcycle-distribute-tasks', args=[self.cycle.id]), {}, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_budget_task_list_exposes_real_budget_context(self):
+        self.client.force_authenticate(self.primary_admin)
+        distribute = self.client.post(reverse('budgetcycle-distribute-tasks', args=[self.cycle.id]), {}, format='json')
+        self.assertEqual(distribute.status_code, status.HTTP_201_CREATED)
+
+        arch_task = BudgetTask.objects.get(cycle=self.cycle, department=self.arch)
+        arch_book = BudgetBook.objects.get(
+            cycle=self.cycle,
+            department=self.arch,
+            expense_type=BudgetBook.ExpenseType.OPEX,
+            source_type=BudgetBook.SourceType.SELF_BUILT,
+        )
+        arch_book.current_draft.lines.create(
+            department=self.arch,
+            line_no=1,
+            budget_no='ARCH-DIST-001',
+            description='Arch Draft Line',
+            total_amount='1200.00',
+        )
+
+        response = self.client.get(reverse('budgettask-list'), {'cycle': str(self.cycle.id)})
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        row = next(item for item in response.data['results'] if item['id'] == str(arch_task.id))
+        self.assertEqual(row['department_name'], 'Arch')
+        self.assertEqual(row['owner_name'], self.arch_owner.username)
+        self.assertEqual(row['book_id'], str(arch_book.id))
+        self.assertEqual(row['current_draft_id'], str(arch_book.current_draft_id))
+        self.assertEqual(row['expense_type'], 'opex')
+        self.assertEqual(row['version_label'], 'Draft')
+        self.assertEqual(row['amount'], '1200')
+        self.assertEqual(row['status_label'], '编制中')
+
+    def test_secondary_user_only_sees_authorized_tasks(self):
+        self.client.force_authenticate(self.primary_admin)
+        distribute = self.client.post(reverse('budgetcycle-distribute-tasks', args=[self.cycle.id]), {}, format='json')
+        self.assertEqual(distribute.status_code, status.HTTP_201_CREATED)
+
+        self.client.force_authenticate(self.secondary_user)
+        response = self.client.get(reverse('budgettask-list'))
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['count'], 1)
+        self.assertEqual(response.data['results'][0]['department_code'], 'Arch-DIST')
+
+
 class PrimaryConsolidatedPullAPITests(APITestCase):
     def setUp(self):
         self.user = User.objects.create_user(username='primary-admin', password='password')

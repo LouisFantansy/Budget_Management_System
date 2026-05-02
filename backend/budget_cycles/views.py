@@ -1,13 +1,15 @@
 from django.http import HttpResponse
 from rest_framework import decorators, response, viewsets
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.exceptions import ValidationError
 
-from accounts.access import is_global_budget_user
+from accounts.access import accessible_department_ids, is_global_budget_user
 from budgets.allocations import export_group_allocation_template, import_group_allocations
 from budgets.serializers import BudgetVersionSerializer
 from budgets.services import pull_primary_consolidated_book
 from .models import BudgetCycle, BudgetTask
 from .serializers import BudgetCycleSerializer, BudgetTaskSerializer
+from .services import distribute_cycle_tasks
 
 
 class BudgetCycleViewSet(viewsets.ModelViewSet):
@@ -15,6 +17,18 @@ class BudgetCycleViewSet(viewsets.ModelViewSet):
     serializer_class = BudgetCycleSerializer
     filterset_fields = ['year', 'status']
     search_fields = ['name']
+
+    def perform_create(self, serializer):
+        self._ensure_global_permission()
+        serializer.save()
+
+    def perform_update(self, serializer):
+        self._ensure_global_permission()
+        serializer.save()
+
+    def perform_destroy(self, instance):
+        self._ensure_global_permission()
+        super().perform_destroy(instance)
 
     @decorators.action(detail=True, methods=['post'], url_path='pull-primary-consolidated')
     def pull_primary_consolidated(self, request, pk=None):
@@ -53,10 +67,49 @@ class BudgetCycleViewSet(viewsets.ModelViewSet):
         serializer = AllocationUploadSerializer(upload)
         return response.Response(serializer.data, status=201)
 
+    @decorators.action(detail=True, methods=['post'], url_path='distribute-tasks')
+    def distribute_tasks(self, request, pk=None):
+        self._ensure_global_permission()
+        result = distribute_cycle_tasks(
+            self.get_object(),
+            requester=request.user,
+            due_at=request.data.get('due_at'),
+        )
+        return response.Response(result, status=201)
+
+    def _ensure_global_permission(self):
+        if is_global_budget_user(self.request.user):
+            return
+        raise PermissionDenied('只有一级预算角色可以维护预算周期。')
+
 
 class BudgetTaskViewSet(viewsets.ModelViewSet):
     queryset = BudgetTask.objects.select_related('cycle', 'department', 'owner').all()
     serializer_class = BudgetTaskSerializer
     filterset_fields = ['cycle', 'department', 'owner', 'status']
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        if is_global_budget_user(self.request.user):
+            return queryset
+        department_ids = accessible_department_ids(self.request.user)
+        return queryset.filter(department_id__in=department_ids)
+
+    def perform_create(self, serializer):
+        self._ensure_global_permission()
+        serializer.save()
+
+    def perform_update(self, serializer):
+        self._ensure_global_permission()
+        serializer.save()
+
+    def perform_destroy(self, instance):
+        self._ensure_global_permission()
+        super().perform_destroy(instance)
+
+    def _ensure_global_permission(self):
+        if is_global_budget_user(self.request.user):
+            return
+        raise PermissionDenied('只有一级预算角色可以维护预算任务。')
 
 # Create your views here.

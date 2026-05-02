@@ -10,11 +10,15 @@ export interface SummaryStat {
 }
 
 export interface BudgetTask {
+  id?: string
+  cycleId?: string
   bookId?: string
   currentDraftId?: string | null
   departmentId?: string
   sourceType?: string
   templateId?: string
+  expenseType?: string
+  dueAt?: string
   department: string
   owner: string
   status: string
@@ -83,6 +87,40 @@ export interface ApiBudgetBook {
   template: string
   current_draft: string | null
   latest_approved_version: string | null
+}
+
+export interface ApiBudgetCycle {
+  id: string
+  year: number
+  name: string
+  status: string
+  status_label?: string
+  start_at: string | null
+  end_at: string | null
+  task_count?: number
+}
+
+export interface ApiBudgetTask {
+  id: string
+  cycle: string
+  cycle_name?: string
+  department: string
+  department_name?: string
+  department_code?: string
+  owner: number | null
+  owner_name?: string
+  status: string
+  status_label?: string
+  due_at: string | null
+  book_id?: string
+  current_draft_id?: string
+  latest_approved_version_id?: string
+  source_type?: string
+  template_id?: string
+  expense_type?: string
+  version_label?: string
+  amount?: string
+  book_status?: string
 }
 
 export interface ApiBudgetLine {

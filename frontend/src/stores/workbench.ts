@@ -4,11 +4,13 @@ import type {
   ApiApprovalRequest,
   ApiAllocationUpload,
   ApiBudgetBook,
+  ApiBudgetCycle,
   ApiDashboardApplyResponse,
   ApiDashboardConfig,
   ApiDepartment,
   ApiBudgetLine,
   ApiBudgetLineBulkResult,
+  ApiBudgetTask,
   ApiBudgetOverview,
   ApiBudgetTemplate,
   ApiBudgetVersion,
@@ -72,6 +74,7 @@ export const useWorkbenchStore = defineStore('workbench', {
     actionLoading: false,
     error: '',
     currentUser: null as ApiUser | null,
+    activeCycleId: '',
     departments: [] as ApiDepartment[],
     loginForm: {
       username: 'primary-admin',
@@ -152,6 +155,7 @@ export const useWorkbenchStore = defineStore('workbench', {
     lineErrors: {} as Record<string, string>,
     recommendations: {} as Record<string, ApiPurchaseHistory[]>,
     cycleName: '2027 年度预算编制',
+    cycleStatus: '',
     versionContext: 'latest_approved' as VersionContext,
     summaryStats: [
       { label: 'OPEX Approved', value: '¥ 48.6M', delta: '+6.8% YoY', tone: 'blue' },
@@ -186,13 +190,20 @@ export const useWorkbenchStore = defineStore('workbench', {
       this.loading = true
       this.error = ''
       try {
-        const [departments, categories, projects, books, approvals] = await Promise.all([
+        const [cycles, departments, categories, projects, books, tasks, approvals] = await Promise.all([
+          apiGet<PaginatedResponse<ApiBudgetCycle>>('/cycles/'),
           apiGet<PaginatedResponse<ApiDepartment>>('/departments/'),
           apiGet<PaginatedResponse<{ id: string; name: string }>>('/categories/'),
           apiGet<PaginatedResponse<{ id: string; name: string }>>('/projects/'),
           apiGet<PaginatedResponse<ApiBudgetBook>>('/budget-books/'),
+          apiGet<PaginatedResponse<ApiBudgetTask>>('/budget-tasks/'),
           apiGet<PaginatedResponse<ApiApprovalRequest>>('/approval-requests/'),
         ])
+
+        const activeCycle = cycles.results[0]
+        this.activeCycleId = activeCycle?.id ?? ''
+        this.cycleName = activeCycle?.name ?? '未配置预算周期'
+        this.cycleStatus = activeCycle?.status_label ?? activeCycle?.status ?? ''
 
         this.departments = departments.results
         departments.results.forEach((item) => {
@@ -205,17 +216,21 @@ export const useWorkbenchStore = defineStore('workbench', {
           projectNames[item.id] = item.name
         })
 
-        this.tasks = books.results.map((book) => ({
-          bookId: book.id,
-          currentDraftId: book.current_draft,
-          departmentId: book.department,
-          sourceType: book.source_type,
-          templateId: book.template,
-          department: departmentNames[book.department] ?? book.department,
-          owner: book.status === 'approved' ? '已审批版本' : '预算管理员',
-          status: book.status,
-          version: book.latest_approved_version ? 'Approved' : book.current_draft ? 'Draft' : '未开始',
-          amount: book.latest_approved_version ? '已生成' : '编制中',
+        this.tasks = tasks.results.map((task) => ({
+          id: task.id,
+          cycleId: task.cycle,
+          bookId: task.book_id || undefined,
+          currentDraftId: task.current_draft_id || null,
+          departmentId: task.department,
+          sourceType: task.source_type || undefined,
+          templateId: task.template_id || undefined,
+          expenseType: task.expense_type || undefined,
+          dueAt: task.due_at || undefined,
+          department: task.department_name || departmentNames[task.department] || task.department,
+          owner: task.owner_name || '未分配',
+          status: task.status_label || task.status,
+          version: task.version_label || '未开始',
+          amount: money(task.amount || 0),
         }))
 
         this.approvals = approvals.results.map((item) => ({
@@ -419,16 +434,30 @@ export const useWorkbenchStore = defineStore('workbench', {
       this.actionLoading = true
       this.error = ''
       try {
-        const cycle = await apiGet<PaginatedResponse<{ id: string; name: string }>>('/cycles/')
-        const activeCycle = cycle.results[0]
-        if (!activeCycle) {
+        if (!this.activeCycleId) {
           this.error = '当前没有预算周期'
           return
         }
-        await apiPost(`/cycles/${activeCycle.id}/pull-primary-consolidated/`, { expense_type: expenseType })
+        await apiPost(`/cycles/${this.activeCycleId}/pull-primary-consolidated/`, { expense_type: expenseType })
         await this.load()
       } catch (error) {
         this.error = error instanceof Error ? error.message : '拉取一级总表失败'
+      } finally {
+        this.actionLoading = false
+      }
+    },
+    async distributeCycleTasks() {
+      if (!this.activeCycleId) {
+        this.error = '当前没有预算周期'
+        return
+      }
+      this.actionLoading = true
+      this.error = ''
+      try {
+        await apiPost(`/cycles/${this.activeCycleId}/distribute-tasks/`, {})
+        await this.load()
+      } catch (error) {
+        this.error = error instanceof Error ? error.message : '分发预算任务失败'
       } finally {
         this.actionLoading = false
       }
@@ -437,18 +466,16 @@ export const useWorkbenchStore = defineStore('workbench', {
       this.actionLoading = true
       this.error = ''
       try {
-        const cycle = await apiGet<PaginatedResponse<{ id: string; name: string }>>('/cycles/')
-        const activeCycle = cycle.results[0]
-        if (!activeCycle) {
+        if (!this.activeCycleId) {
           this.error = '当前没有预算周期'
           return
         }
-        const content = await apiGetText(`/cycles/${activeCycle.id}/group-allocation-template/`)
+        const content = await apiGetText(`/cycles/${this.activeCycleId}/group-allocation-template/`)
         const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' })
         const url = window.URL.createObjectURL(blob)
         const link = document.createElement('a')
         link.href = url
-        link.download = `group-allocation-${activeCycle.id}.csv`
+        link.download = `group-allocation-${this.activeCycleId}.csv`
         document.body.appendChild(link)
         link.click()
         link.remove()
@@ -467,13 +494,11 @@ export const useWorkbenchStore = defineStore('workbench', {
       this.actionLoading = true
       this.error = ''
       try {
-        const cycle = await apiGet<PaginatedResponse<{ id: string; name: string }>>('/cycles/')
-        const activeCycle = cycle.results[0]
-        if (!activeCycle) {
+        if (!this.activeCycleId) {
           this.error = '当前没有预算周期'
           return
         }
-        this.latestAllocationUpload = await apiPost<ApiAllocationUpload>(`/cycles/${activeCycle.id}/import-group-allocation/`, {
+        this.latestAllocationUpload = await apiPost<ApiAllocationUpload>(`/cycles/${this.activeCycleId}/import-group-allocation/`, {
           source_name: this.allocationDraft.sourceName,
           raw_text: this.allocationDraft.rawText,
         })
