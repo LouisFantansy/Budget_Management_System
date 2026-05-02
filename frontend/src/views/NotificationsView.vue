@@ -14,6 +14,7 @@ const unreadNotifications = computed(() => store.notifications.filter((item) => 
 function categoryLabel(category: string) {
   if (category === 'approval_todo') return '审批待办'
   if (category === 'approval_result') return '审批结果'
+  if (category === 'anomaly_alert') return '异常提醒'
   return '系统通知'
 }
 </script>

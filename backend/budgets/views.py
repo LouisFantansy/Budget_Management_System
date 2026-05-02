@@ -12,6 +12,7 @@ from .import_export import (
     export_budget_version_import_template_csv,
     import_budget_lines,
 )
+from .lineage import budget_line_lineage
 from .models import AllocationUpload, BudgetBook, BudgetLine, BudgetMonthlyPlan, BudgetVersion
 from .serializers import (
     AllocationUploadSerializer,
@@ -205,6 +206,11 @@ class BudgetLineViewSet(viewsets.ModelViewSet):
             request=request,
         )
         return response.Response(result, status=200)
+
+    @decorators.action(detail=True, methods=['get'], url_path='lineage')
+    def lineage(self, request, pk=None):
+        line = self.get_object()
+        return response.Response(budget_line_lineage(line))
 
 
 class BudgetMonthlyPlanViewSet(viewsets.ModelViewSet):

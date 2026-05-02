@@ -4,6 +4,7 @@ from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 
 from accounts.access import can_approve_department
+from audit.services import create_audit_log
 from budgets.approval_flow import build_dashboard_context, build_step_notification, is_primary_consolidated_book
 from budgets.models import BudgetBook, BudgetVersion
 from budgets.services import mark_budget_approved, mark_budget_rejected
@@ -83,6 +84,23 @@ def approve_request(approval_request, approver, comment=''):
             'acted_by': approver.username,
         },
     )
+    version = _target_budget_version(approval_request)
+    create_audit_log(
+        actor=approver,
+        category='approval',
+        action='approval_approved',
+        target_type='approval_request',
+        target_id=approval_request.id,
+        target_label=approval_request.title,
+        department=approval_request.department,
+        book=version.book if version else None,
+        version=version,
+        details={
+            'request_status': approval_request.status,
+            'comment': comment,
+            'current_node': approval_request.current_node,
+        },
+    )
     return approval_request
 
 
@@ -123,6 +141,23 @@ def reject_request(approval_request, approver, comment=''):
             'approval_request_id': str(approval_request.id),
             'result': 'rejected',
             'acted_by': approver.username,
+        },
+    )
+    version = _target_budget_version(approval_request)
+    create_audit_log(
+        actor=approver,
+        category='approval',
+        action='approval_rejected',
+        target_type='approval_request',
+        target_id=approval_request.id,
+        target_label=approval_request.title,
+        department=approval_request.department,
+        book=version.book if version else None,
+        version=version,
+        details={
+            'request_status': approval_request.status,
+            'comment': comment,
+            'current_node': approval_request.current_node,
         },
     )
     return approval_request

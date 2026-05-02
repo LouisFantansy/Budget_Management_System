@@ -4,6 +4,7 @@ from decimal import Decimal, InvalidOperation
 from django.db import transaction
 from rest_framework.exceptions import ValidationError
 
+from audit.services import create_audit_log
 from budget_templates.models import BudgetTemplate
 from budgets.models import BudgetBook, BudgetLine, BudgetMonthlyPlan, BudgetVersion
 from orgs.models import Department
@@ -76,6 +77,16 @@ def submit_demand_sheet(sheet: DemandSheet, requester=None, comment=''):
     sheet.submitted_at = now
     sheet.latest_comment = comment or sheet.latest_comment
     sheet.save(update_fields=['status', 'submitted_by', 'submitted_at', 'latest_comment', 'updated_at'])
+    create_audit_log(
+        actor=requester,
+        category='demand',
+        action='demand_sheet_submitted',
+        target_type='demand_sheet',
+        target_id=sheet.id,
+        target_label=sheet.template.name,
+        department=sheet.target_department,
+        details={'status': sheet.status, 'comment': comment},
+    )
     return sheet
 
 
@@ -100,6 +111,16 @@ def confirm_demand_sheet(sheet: DemandSheet, requester=None, comment=''):
     sheet.confirmed_at = now
     sheet.latest_comment = comment or sheet.latest_comment
     sheet.save(update_fields=['status', 'confirmed_by', 'confirmed_at', 'latest_comment', 'updated_at'])
+    create_audit_log(
+        actor=requester,
+        category='demand',
+        action='demand_sheet_confirmed',
+        target_type='demand_sheet',
+        target_id=sheet.id,
+        target_label=sheet.template.name,
+        department=sheet.target_department,
+        details={'status': sheet.status, 'comment': comment},
+    )
     return sheet
 
 
@@ -117,6 +138,16 @@ def reopen_demand_sheet(sheet: DemandSheet, requester=None, comment=''):
     sheet.confirmed_at = None
     sheet.latest_comment = comment or sheet.latest_comment
     sheet.save(update_fields=['status', 'confirmed_by', 'confirmed_at', 'latest_comment', 'updated_at'])
+    create_audit_log(
+        actor=requester,
+        category='demand',
+        action='demand_sheet_reopened',
+        target_type='demand_sheet',
+        target_id=sheet.id,
+        target_label=sheet.template.name,
+        department=sheet.target_department,
+        details={'status': sheet.status, 'comment': comment},
+    )
     return sheet
 
 
@@ -243,6 +274,23 @@ def generate_budget_lines_from_sheet(sheet: DemandSheet, requester=None, force_r
             'generated_payload_hash',
             'updated_at',
         ]
+    )
+    create_audit_log(
+        actor=requester,
+        category='demand',
+        action='demand_budget_generated',
+        target_type='demand_sheet',
+        target_id=sheet.id,
+        target_label=sheet.template.name,
+        department=sheet.target_department,
+        book=book,
+        version=draft,
+        details={
+            'generated_line_count': len(created_lines),
+            'book_id': str(book.id),
+            'version_id': str(draft.id),
+            'generated_for_department': budget_department.code,
+        },
     )
     return {
         'book': book,

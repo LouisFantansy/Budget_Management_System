@@ -5,6 +5,7 @@ from decimal import Decimal, InvalidOperation
 from django.db import transaction
 from rest_framework.exceptions import ValidationError
 
+from audit.services import create_audit_log
 from orgs.models import Department
 
 from .models import AllocationUpload, BudgetBook, BudgetLine, BudgetMonthlyPlan, BudgetVersion
@@ -61,6 +62,21 @@ def import_group_allocations(cycle, requester, *, source_name: str, raw_text: st
             'departments': [row['department'].code for row in department_rows],
         }
         upload.save(update_fields=['total_rows', 'imported_rows', 'error_rows', 'summary', 'updated_at'])
+        create_audit_log(
+            actor=requester,
+            category='import',
+            action='group_allocation_imported',
+            target_type='allocation_upload',
+            target_id=upload.id,
+            target_label=source_name,
+            department=primary_department,
+            book=book,
+            version=version,
+            details={
+                'imported_rows': len(department_rows),
+                'departments': [row['department'].code for row in department_rows],
+            },
+        )
         return upload
     except ValidationError as error:
         detail = error.detail
@@ -70,6 +86,15 @@ def import_group_allocations(cycle, requester, *, source_name: str, raw_text: st
         upload.errors = errors
         upload.summary = {'message': '集团分摊导入失败。'}
         upload.save(update_fields=['status', 'total_rows', 'error_rows', 'errors', 'summary', 'updated_at'])
+        create_audit_log(
+            actor=requester,
+            category='import',
+            action='group_allocation_import_failed',
+            target_type='allocation_upload',
+            target_id=upload.id,
+            target_label=source_name,
+            details={'error_rows': len(errors)},
+        )
         return upload
 
 

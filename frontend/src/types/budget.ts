@@ -149,6 +149,32 @@ export interface ApiBudgetLine {
   monthly_plans: BudgetMonthlyPlanPreview[]
 }
 
+export interface ApiBudgetLineLineage {
+  line_id: string
+  source: {
+    type: string
+    ref_id: string | null
+    department_code?: string
+    book_id?: string
+    version_id?: string
+    sheet_id?: string
+    template_id?: string
+    allocation_owner?: string
+    generated_for_department?: string
+    row_index?: number
+  }
+  upstreams: Array<Record<string, unknown>>
+  downstreams: Array<{
+    line_id: string
+    version_id: string
+    budget_no: string
+    description: string
+    source_ref_type: string
+    department_code?: string
+    book_id?: string
+  }>
+}
+
 export interface ApiTemplateField {
   id: string
   template: string
@@ -559,7 +585,7 @@ export interface ApiBudgetLineBulkResult {
 export interface ApiNotification {
   id: string
   recipient: number
-  category: 'approval_todo' | 'approval_result' | 'system'
+  category: 'approval_todo' | 'approval_result' | 'anomaly_alert' | 'system'
   title: string
   message: string
   status: 'unread' | 'read'

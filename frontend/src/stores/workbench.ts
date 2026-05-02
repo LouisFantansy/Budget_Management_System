@@ -10,6 +10,7 @@ import type {
   ApiDashboardConfig,
   ApiDepartment,
   ApiBudgetLine,
+  ApiBudgetLineLineage,
   ApiBudgetLineBulkResult,
   ApiBudgetTask,
   ApiBudgetOverview,
@@ -130,6 +131,7 @@ export const useWorkbenchStore = defineStore('workbench', {
     } as ApiNotificationSummary,
     latestAllocationUpload: null as ApiAllocationUpload | null,
     primarySyncStatus: null as ApiPrimarySyncStatus | null,
+    selectedLineLineage: null as ApiBudgetLineLineage | null,
     allocationDraft: {
       sourceName: 'group-allocation.tsv',
       rawText: '',
@@ -928,6 +930,17 @@ export const useWorkbenchStore = defineStore('workbench', {
         this.actionLoading = false
       }
     },
+    async loadLineage(lineId?: string) {
+      if (!lineId) {
+        this.selectedLineLineage = null
+        return
+      }
+      try {
+        this.selectedLineLineage = await apiGet<ApiBudgetLineLineage>(`/budget-lines/${lineId}/lineage/`)
+      } catch (error) {
+        this.error = error instanceof Error ? error.message : '加载条目血缘失败'
+      }
+    },
     async loadTemplates() {
       this.loading = true
       this.error = ''
@@ -1413,12 +1426,18 @@ export const useWorkbenchStore = defineStore('workbench', {
         this.selectedLineIds = this.selectedLineIds.filter((lineId) =>
           activeLines.some((line) => line.id === lineId && this.canEditLine(line)),
         )
+        if (!this.selectedLineId) {
+          this.selectedLineLineage = null
+        }
         return
       }
       this.selectedLineId = activeLines[0]?.id ?? ''
       this.selectedLineIds = this.selectedLineIds.filter((lineId) =>
         activeLines.some((line) => line.id === lineId && this.canEditLine(line)),
       )
+      if (!this.selectedLineId) {
+        this.selectedLineLineage = null
+      }
     },
   },
 })

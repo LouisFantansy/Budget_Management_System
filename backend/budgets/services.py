@@ -5,9 +5,10 @@ from rest_framework.exceptions import ValidationError
 
 from accounts.access import is_global_budget_user
 from approvals.models import ApprovalRequest, ApprovalStep
+from audit.services import create_audit_log
 from budget_templates.validation import collect_dynamic_data_errors
 from notifications.models import Notification
-from notifications.services import create_notifications
+from notifications.services import create_notification, create_notifications
 from orgs.models import Department
 
 from .approval_flow import (
@@ -67,6 +68,23 @@ def submit_budget_version(version, requester, approver_ids=None, comment=''):
     create_notifications(
         first_approvers,
         **build_step_notification(version, requester, first_node, approval_request),
+    )
+    _notify_budget_anomalies(version, requester=requester)
+    create_audit_log(
+        actor=requester,
+        category='budget',
+        action='version_submitted',
+        target_type='budget_version',
+        target_id=version.id,
+        target_label=request_title_for_version(version),
+        department=book.department,
+        book=book,
+        version=version,
+        details={
+            'approval_request_id': str(approval_request.id),
+            'approver_count': sum(len(approvers) for _, approvers in approval_nodes),
+            'comment': comment,
+        },
     )
     _mark_budget_tasks_on_submit(version)
     return approval_request
@@ -158,6 +176,22 @@ def create_revision_draft(book, requester=None, base_version=None):
         _update_primary_tasks(draft, status='pulled_to_primary')
     else:
         _update_secondary_task(book, status='drafting')
+    create_audit_log(
+        actor=requester,
+        category='budget',
+        action='revision_draft_created',
+        target_type='budget_version',
+        target_id=draft.id,
+        target_label=f'{book.department.name} 修订 Draft',
+        department=book.department,
+        book=book,
+        version=draft,
+        details={
+            'base_version_id': str(base_version.id),
+            'base_version_no': base_version.version_no,
+            'line_count': draft.lines.count(),
+        },
+    )
     return draft
 
 
@@ -279,6 +313,22 @@ def pull_primary_consolidated_book(cycle, expense_type, requester=None):
         book.department_id for book in source_books if book.source_type == BudgetBook.SourceType.SELF_BUILT
     ]
     _update_task_status(cycle, source_department_ids, status='pulled_to_primary')
+    create_audit_log(
+        actor=requester,
+        category='budget',
+        action='primary_consolidated_pulled',
+        target_type='budget_version',
+        target_id=draft.id,
+        target_label=f'{cycle.name} {expense_type.upper()} 一级总表 Draft',
+        department=primary_department,
+        book=consolidated_book,
+        version=draft,
+        details={
+            'source_book_ids': [str(book.id) for book in source_books],
+            'source_version_ids': [str(book.current_draft_id if book.source_type == BudgetBook.SourceType.GROUP_ALLOCATION else book.latest_approved_version_id) for book in source_books],
+            'line_count': draft.lines.count(),
+        },
+    )
     return draft
 
 
@@ -483,3 +533,62 @@ def _set_cycle_status(cycle, status):
         return
     cycle.status = status_value
     cycle.save(update_fields=['status', 'updated_at'])
+
+
+def _notify_budget_anomalies(version, requester=None):
+    from decimal import Decimal
+
+    diff_payload = None
+    if version.base_version_id:
+        from .diff import compare_versions
+
+        diff_payload = compare_versions(version.base_version, version)
+
+    issues = []
+    if version.base_version_id and diff_payload and diff_payload['summary']['total_changes'] >= 10:
+        issues.append(f"本次送审共 {diff_payload['summary']['total_changes']} 项变更")
+    if version.base_version_id and diff_payload:
+        amount_delta = abs(sum(_change_amount_delta(change) for change in diff_payload['changes']))
+        if amount_delta >= 100000:
+            issues.append(f'本次金额波动达到 {amount_delta:.2f}')
+    total_amount = sum((line.total_amount for line in version.lines.all()), Decimal('0'))
+    if total_amount == Decimal('0'):
+        issues.append('当前送审版本总金额为 0')
+
+    if not issues:
+        return
+
+    recipients = []
+    if requester and getattr(requester, 'is_authenticated', False):
+        recipients.append(requester)
+    approvers = [
+        step.approver
+        for step in ApprovalStep.objects.select_related('approver').filter(request__target_id=version.id)
+    ]
+    recipients.extend(approvers)
+    create_notifications(
+        recipients,
+        category=Notification.Category.ANOMALY_ALERT,
+        title=f'异常变更提醒: {request_title_for_version(version)}',
+        message='；'.join(issues),
+        target_type='budget_version',
+        target_id=version.id,
+        department=version.book.department,
+        extra={
+            'category': 'budget_anomaly',
+            'issues': issues,
+            'version_id': str(version.id),
+            'book_id': str(version.book_id),
+        },
+    )
+
+
+def _change_amount_delta(change):
+    from decimal import Decimal
+
+    if change['type'] in {'added', 'deleted'}:
+        return Decimal(change.get('amount_delta') or '0')
+    for field_change in change['field_changes']:
+        if field_change['field'] == 'total_amount' and field_change['delta']:
+            return Decimal(field_change['delta'])
+    return Decimal('0')

@@ -9,6 +9,7 @@ const showImportPanel = ref(false)
 onMounted(() => {
   if (!store.budgetLines.length) store.load()
   if (!store.masterData.projects.length) store.loadMasterData()
+  if (store.selectedLineId) store.loadLineage(store.selectedLineId)
 })
 
 function dynamicValue(line: { dynamicData?: Record<string, unknown> }, code: string) {
@@ -62,6 +63,7 @@ const allEditableSelected = computed(
 function openLineAction(line: (typeof store.budgetLines)[number]) {
   if (isPrimaryConsolidated.value) {
     store.selectLine(line.id)
+    store.loadLineage(line.id)
     return
   }
   store.renameLine(line)
@@ -253,6 +255,32 @@ function toggleSelectAll() {
           </div>
         </div>
         <p v-else class="empty-note">当前模板没有动态字段。</p>
+      </article>
+      <article class="detail-section">
+        <h3>数据血缘</h3>
+        <div v-if="store.selectedLineLineage" class="detail-meta-list">
+          <div>
+            <span>来源类型</span>
+            <strong>{{ store.selectedLineLineage.source.type || '-' }}</strong>
+          </div>
+          <div>
+            <span>来源引用</span>
+            <strong>{{ store.selectedLineLineage.source.ref_id || '-' }}</strong>
+          </div>
+          <div>
+            <span>来源预算版本</span>
+            <strong>{{ store.selectedLineLineage.source.version_id || '-' }}</strong>
+          </div>
+          <div>
+            <span>来源专题/部门</span>
+            <strong>{{ store.selectedLineLineage.source.sheet_id || store.selectedLineLineage.source.department_code || '-' }}</strong>
+          </div>
+          <div>
+            <span>下游引用数</span>
+            <strong>{{ store.selectedLineLineage.downstreams.length }}</strong>
+          </div>
+        </div>
+        <p v-else class="empty-note">点击条目后可查看来源链路。</p>
       </article>
     </div>
   </section>

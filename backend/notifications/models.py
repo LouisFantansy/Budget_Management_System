@@ -7,6 +7,7 @@ class Notification(TimestampedModel):
     class Category(models.TextChoices):
         APPROVAL_TODO = 'approval_todo', '审批待办'
         APPROVAL_RESULT = 'approval_result', '审批结果'
+        ANOMALY_ALERT = 'anomaly_alert', '异常提醒'
         SYSTEM = 'system', '系统通知'
 
     class Status(models.TextChoices):
@@ -37,4 +38,3 @@ class Notification(TimestampedModel):
 
     def __str__(self):
         return f'{self.recipient} - {self.title}'
-
