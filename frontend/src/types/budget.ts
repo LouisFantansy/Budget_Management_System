@@ -35,6 +35,7 @@ export interface ApprovalItem {
   versionContext: VersionContext
   amount: string
   due: string
+  stage?: string
   diffSummary?: {
     added: number
     deleted: number
@@ -148,6 +149,8 @@ export interface ApiApprovalRequest {
   title: string
   department: string
   status: string
+  current_stage?: string
+  current_stage_label?: string
   diff_summary?: {
     added: number
     deleted: number

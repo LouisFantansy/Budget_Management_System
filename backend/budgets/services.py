@@ -4,29 +4,21 @@ from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 
 from accounts.access import is_global_budget_user
-from accounts.models import RoleAssignment, User
 from approvals.models import ApprovalRequest, ApprovalStep
 from budget_templates.validation import collect_dynamic_data_errors
 from notifications.models import Notification
 from notifications.services import create_notifications
 from orgs.models import Department
 
+from .approval_flow import (
+    build_dashboard_context,
+    build_step_notification,
+    is_primary_consolidated_book,
+    request_title_for_version,
+    resolve_approval_nodes,
+    source_department_ids_for_primary_version,
+)
 from .models import BudgetBook, BudgetLine, BudgetMonthlyPlan, BudgetVersion
-
-
-def _resolve_budget_approvers(version, approver_ids=None):
-    if approver_ids:
-        approvers = list(User.objects.filter(id__in=approver_ids))
-        if len(approvers) != len(set(approver_ids)):
-            raise ValidationError({'approver_ids': '审批人不存在或不完整。'})
-        return approvers
-
-    return list(
-        User.objects.filter(
-            role_assignments__role=RoleAssignment.Role.SECONDARY_DEPT_HEAD,
-            role_assignments__department=version.book.department,
-        ).distinct()
-    )
 
 
 @transaction.atomic
@@ -40,9 +32,7 @@ def submit_budget_version(version, requester, approver_ids=None, comment=''):
         raise ValidationError({'current_draft': '预算表已有其他当前 Draft。'})
     _validate_version_before_submit(version, user=requester)
 
-    approvers = _resolve_budget_approvers(version, approver_ids)
-    if not approvers:
-        raise ValidationError({'approver_ids': '未找到二级部门负责人，请指定审批人。'})
+    approval_nodes = resolve_approval_nodes(version, approver_ids=approver_ids)
 
     now = timezone.now()
     version.status = BudgetVersion.Status.SUBMITTED
@@ -59,37 +49,26 @@ def submit_budget_version(version, requester, approver_ids=None, comment=''):
     approval_request = ApprovalRequest.objects.create(
         target_type='budget_version',
         target_id=version.id,
-        title=f'{book.department.name} {book.get_expense_type_display()} 预算送审',
+        title=request_title_for_version(version),
         requester=requester,
         department=book.department,
+        current_node=approval_nodes[0][0],
         submitted_version_label='Draft',
-        dashboard_context={
-            'version_context': 'submitted_version',
-            'version_id': str(version.id),
-            'book_id': str(book.id),
-        },
+        dashboard_context=build_dashboard_context(version, node=approval_nodes[0][0]),
     )
     ApprovalStep.objects.bulk_create(
         [
-            ApprovalStep(request=approval_request, node=1, approver=approver)
+            ApprovalStep(request=approval_request, node=node, approver=approver)
+            for node, approvers in approval_nodes
             for approver in approvers
         ]
     )
+    first_node, first_approvers = approval_nodes[0]
     create_notifications(
-        approvers,
-        category=Notification.Category.APPROVAL_TODO,
-        title=f'待审批: {approval_request.title}',
-        message=f'{requester.display_name or requester.username} 已提交 {book.department.name} {book.get_expense_type_display()} 预算，请尽快处理。',
-        target_type='approval_request',
-        target_id=approval_request.id,
-        department=book.department,
-        extra={
-            'approval_request_id': str(approval_request.id),
-            'version_id': str(version.id),
-            'book_id': str(book.id),
-            'result': 'pending',
-        },
+        first_approvers,
+        **build_step_notification(version, requester, first_node, approval_request),
     )
+    _mark_budget_tasks_on_submit(version)
     return approval_request
 
 
@@ -117,8 +96,8 @@ def create_revision_draft(book, requester=None, base_version=None):
     base_version = base_version or book.latest_approved_version
     if not base_version:
         raise ValidationError({'base_version': '没有可用于修订的 Approved 版本。'})
-    if base_version.book_id != book.id or base_version.status != BudgetVersion.Status.APPROVED:
-        raise ValidationError({'base_version': '只能基于本预算表的 Approved 版本创建修订。'})
+    if base_version.book_id != book.id or base_version.status not in [BudgetVersion.Status.APPROVED, BudgetVersion.Status.FINAL]:
+        raise ValidationError({'base_version': '只能基于本预算表的 Approved / Final 版本创建修订。'})
 
     draft = BudgetVersion.objects.create(
         book=book,
@@ -174,6 +153,11 @@ def create_revision_draft(book, requester=None, base_version=None):
     book.current_draft = draft
     book.status = BudgetBook.Status.DRAFTING
     book.save(update_fields=['current_draft', 'status', 'updated_at'])
+    if is_primary_consolidated_book(book):
+        reopen_cycle_if_locked(book.cycle)
+        _update_primary_tasks(draft, status='pulled_to_primary')
+    else:
+        _update_secondary_task(book, status='drafting')
     return draft
 
 
@@ -289,15 +273,12 @@ def pull_primary_consolidated_book(cycle, expense_type, requester=None):
     consolidated_book.current_draft = draft
     consolidated_book.status = BudgetBook.Status.DRAFTING
     consolidated_book.save(update_fields=['template', 'current_draft', 'status', 'updated_at'])
+    reopen_cycle_if_locked(cycle)
 
     source_department_ids = [
         book.department_id for book in source_books if book.source_type == BudgetBook.SourceType.SELF_BUILT
     ]
-    from budget_cycles.models import BudgetTask
-
-    BudgetTask.objects.filter(cycle=cycle, department_id__in=source_department_ids).update(
-        status=BudgetTask.Status.PULLED_TO_PRIMARY
-    )
+    _update_task_status(cycle, source_department_ids, status='pulled_to_primary')
     return draft
 
 
@@ -441,3 +422,64 @@ def _patch_budget_lines(version, lines, patch_data, request=None):
         serializer.save()
         updated_ids.append(str(line.id))
     return {'action': 'patch', 'affected': len(updated_ids), 'updated_ids': updated_ids}
+
+
+def reopen_cycle_if_locked(cycle):
+    from budget_cycles.models import BudgetCycle
+
+    if cycle.status != BudgetCycle.Status.LOCKED:
+        return
+    cycle.status = BudgetCycle.Status.ACTIVE
+    cycle.save(update_fields=['status', 'updated_at'])
+
+
+def mark_budget_approved(version):
+    if is_primary_consolidated_book(version.book):
+        _update_primary_tasks(version, status='final_locked')
+        _set_cycle_status(version.book.cycle, 'locked')
+        return
+    _update_secondary_task(version.book, status='secondary_approved')
+
+
+def mark_budget_rejected(version):
+    if is_primary_consolidated_book(version.book):
+        _update_primary_tasks(version, status='pulled_to_primary')
+        _set_cycle_status(version.book.cycle, 'active')
+        return
+    _update_secondary_task(version.book, status='secondary_rejected')
+
+
+def _mark_budget_tasks_on_submit(version):
+    if is_primary_consolidated_book(version.book):
+        _update_primary_tasks(version, status='primary_review')
+        _set_cycle_status(version.book.cycle, 'reviewing')
+        return
+    _update_secondary_task(version.book, status='secondary_review')
+
+
+def _update_primary_tasks(version, status):
+    department_ids = source_department_ids_for_primary_version(version)
+    _update_task_status(version.book.cycle, department_ids, status=status)
+
+
+def _update_secondary_task(book, status):
+    _update_task_status(book.cycle, [book.department_id], status=status)
+
+
+def _update_task_status(cycle, department_ids, status):
+    if not department_ids:
+        return
+    from budget_cycles.models import BudgetTask
+
+    status_value = getattr(BudgetTask.Status, status.upper())
+    BudgetTask.objects.filter(cycle=cycle, department_id__in=department_ids).update(status=status_value)
+
+
+def _set_cycle_status(cycle, status):
+    from budget_cycles.models import BudgetCycle
+
+    status_value = getattr(BudgetCycle.Status, status.upper())
+    if cycle.status == status_value:
+        return
+    cycle.status = status_value
+    cycle.save(update_fields=['status', 'updated_at'])

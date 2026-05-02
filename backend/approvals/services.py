@@ -4,9 +4,12 @@ from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 
 from accounts.access import can_approve_department
+from budgets.approval_flow import build_dashboard_context, build_step_notification, is_primary_consolidated_book
 from budgets.models import BudgetBook, BudgetVersion
+from budgets.services import mark_budget_approved, mark_budget_rejected
 from notifications.models import Notification
 from notifications.services import create_notification
+from notifications.services import create_notifications
 
 from .models import ApprovalRequest, ApprovalStep
 
@@ -33,7 +36,34 @@ def approve_request(approval_request, approver, comment=''):
         status=Notification.Status.UNREAD,
     ).update(status=Notification.Status.READ, read_at=now, updated_at=now)
 
-    if approval_request.steps.filter(action=ApprovalStep.Action.PENDING).exists():
+    if approval_request.steps.filter(node=approval_request.current_node, action=ApprovalStep.Action.PENDING).exists():
+        return approval_request
+
+    next_node = (
+        approval_request.steps.filter(node__gt=approval_request.current_node, action=ApprovalStep.Action.PENDING)
+        .order_by('node')
+        .values_list('node', flat=True)
+        .first()
+    )
+    if next_node is not None:
+        version = _target_budget_version(approval_request)
+        approval_request.current_node = next_node
+        if version is not None:
+            approval_request.dashboard_context = build_dashboard_context(version, node=next_node)
+            approval_request.save(update_fields=['current_node', 'dashboard_context', 'updated_at'])
+            next_approvers = [
+                step.approver
+                for step in approval_request.steps.select_related('approver').filter(
+                    node=next_node,
+                    action=ApprovalStep.Action.PENDING,
+                )
+            ]
+            create_notifications(
+                next_approvers,
+                **build_step_notification(version, approval_request.requester, next_node, approval_request),
+            )
+        else:
+            approval_request.save(update_fields=['current_node', 'updated_at'])
         return approval_request
 
     approval_request.status = ApprovalRequest.Status.APPROVED
@@ -121,19 +151,20 @@ def _apply_target_approval(approval_request, approver, approved_at):
         or 0
     ) + 1
 
-    version.status = BudgetVersion.Status.APPROVED
+    version.status = BudgetVersion.Status.FINAL if is_primary_consolidated_book(book) else BudgetVersion.Status.APPROVED
     version.version_no = next_version_no
     version.approved_by = approver
     version.approved_at = approved_at
     version.save(update_fields=['status', 'version_no', 'approved_by', 'approved_at', 'updated_at'])
 
-    book.status = BudgetBook.Status.APPROVED
+    book.status = BudgetBook.Status.LOCKED if is_primary_consolidated_book(book) else BudgetBook.Status.APPROVED
     book.latest_approved_version = version
     book.current_draft = None
     book.save(update_fields=['status', 'latest_approved_version', 'current_draft', 'updated_at'])
 
     approval_request.submitted_version_label = f'V{next_version_no}'
     approval_request.save(update_fields=['submitted_version_label', 'updated_at'])
+    mark_budget_approved(version)
 
 
 def _apply_target_rejection(approval_request):
@@ -152,3 +183,10 @@ def _apply_target_rejection(approval_request):
     if book.current_draft_id == version.id:
         book.current_draft = version
     book.save(update_fields=['status', 'current_draft', 'updated_at'])
+    mark_budget_rejected(version)
+
+
+def _target_budget_version(approval_request):
+    if approval_request.target_type != 'budget_version':
+        return None
+    return BudgetVersion.objects.select_related('book').get(id=approval_request.target_id)

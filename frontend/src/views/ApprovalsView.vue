@@ -31,7 +31,10 @@ onMounted(() => {
       </div>
       <div class="approval-metric">
         <strong>{{ item.amount }}</strong>
-        <span>{{ item.versionContext === 'submitted_version' ? '本次送审版本' : '当前 Draft' }}</span>
+        <span>
+          {{ item.versionContext === 'submitted_version' ? '本次送审版本' : '当前 Draft' }}
+          <template v-if="item.stage"> · {{ item.stage }}</template>
+        </span>
       </div>
       <div v-if="item.diffSummary" class="diff-summary">
         <span>新增 {{ item.diffSummary.added }}</span>

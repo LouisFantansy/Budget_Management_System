@@ -42,6 +42,8 @@ class Command(BaseCommand):
         owner = self._user('budget-owner', '预算管理员', arch)
         approver = self._user('dept-head', '二级部门负责人', arch)
         primary_admin = self._user('primary-admin', '一级预算管理员', primary)
+        primary_reviewer = self._user('primary-reviewer', '一级预算主管', primary)
+        primary_head = self._user('ss-head', '一级部门负责人', primary)
         RoleAssignment.objects.get_or_create(
             user=owner,
             role=RoleAssignment.Role.SECONDARY_BUDGET_OWNER,
@@ -55,6 +57,16 @@ class Command(BaseCommand):
         RoleAssignment.objects.get_or_create(
             user=primary_admin,
             role=RoleAssignment.Role.PRIMARY_BUDGET_ADMIN,
+            department=primary,
+        )
+        RoleAssignment.objects.get_or_create(
+            user=primary_reviewer,
+            role=RoleAssignment.Role.PRIMARY_BUDGET_REVIEWER,
+            department=primary,
+        )
+        RoleAssignment.objects.get_or_create(
+            user=primary_head,
+            role=RoleAssignment.Role.PRIMARY_DEPT_HEAD,
             department=primary,
         )
 
@@ -101,7 +113,7 @@ class Command(BaseCommand):
                 defaults={'owner': task_owner, 'status': BudgetTask.Status.DRAFTING},
             )
 
-        self.stdout.write(self.style.SUCCESS('Demo data seeded. Users: budget-owner / dept-head / primary-admin, password: password'))
+        self.stdout.write(self.style.SUCCESS('Demo data seeded. Users: budget-owner / dept-head / primary-admin / primary-reviewer / ss-head, password: password'))
 
     def _department(self, code, name, level, parent=None, sort_order=0):
         department, _ = Department.objects.update_or_create(

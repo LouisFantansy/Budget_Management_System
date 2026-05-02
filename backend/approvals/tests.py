@@ -54,3 +54,4 @@ class ApprovalRequestDiffSummaryTests(APITestCase):
         self.assertEqual(summary['modified'], 1)
         self.assertEqual(summary['deleted'], 0)
         self.assertEqual(summary['total_changes'], 2)
+        self.assertEqual(response.data['results'][0]['current_stage'], '')
