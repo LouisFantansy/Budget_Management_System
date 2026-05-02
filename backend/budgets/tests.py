@@ -589,6 +589,88 @@ class BudgetApprovalFlowAPITests(APITestCase):
         self.assertEqual(modified_fields['total_amount']['delta'], '30000.00')
         self.assertEqual(changes_by_type['modified']['monthly_changes'][0]['amount_delta'], '30000.00')
 
+    def test_book_version_analysis_returns_real_topology_stats_and_heatmap(self):
+        second_line = BudgetLine.objects.create(
+            version=self.version,
+            department=self.department,
+            line_no=2,
+            budget_no='OPEX-DELETE',
+            description='待删除条目',
+            total_amount='5000.00',
+        )
+        BudgetMonthlyPlan.objects.create(line=self.line, month=1, quantity='1.00', amount='120000.00')
+        approval_request = self._submit_version()
+        self.client.force_authenticate(self.approver)
+        approve_response = self.client.post(reverse('approvalrequest-approve', args=[approval_request.id]), {}, format='json')
+        self.assertEqual(approve_response.status_code, status.HTTP_200_OK)
+
+        self.client.force_authenticate(self.requester)
+        revision_response = self.client.post(reverse('budgetbook-create-revision', args=[self.book.id]), {}, format='json')
+        self.assertEqual(revision_response.status_code, status.HTTP_201_CREATED)
+        revision = BudgetVersion.objects.get(id=revision_response.data['id'])
+
+        modified_line = revision.lines.get(budget_no='OPEX-001')
+        modified_line.description = '研发云测试资源 - 扩容'
+        modified_line.total_amount = '150000.00'
+        modified_line.save(update_fields=['description', 'total_amount'])
+        modified_plan = modified_line.monthly_plans.get(month=1)
+        modified_plan.amount = '150000.00'
+        modified_plan.save(update_fields=['amount'])
+        revision.lines.get(budget_no=second_line.budget_no).delete()
+        BudgetLine.objects.create(
+            version=revision,
+            department=self.department,
+            line_no=3,
+            budget_no='OPEX-ADD',
+            description='新增条目',
+            total_amount='7000.00',
+        )
+
+        response = self.client.get(reverse('budgetbook-version-analysis', args=[self.book.id]))
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['book']['latest_approved_version_id'], str(self.version.id))
+        self.assertEqual(response.data['book']['current_draft_id'], str(revision.id))
+        self.assertEqual(response.data['stats']['total_versions'], 2)
+        self.assertEqual(response.data['stats']['revision_rounds'], 1)
+        self.assertEqual(response.data['stats']['approved_versions'], 1)
+        self.assertEqual(response.data['stats']['draft_versions'], 1)
+        self.assertEqual(response.data['stats']['branch_roots'], 1)
+        self.assertEqual(response.data['stats']['branch_heads'], 1)
+        self.assertEqual(response.data['stats']['max_depth'], 2)
+        self.assertEqual(response.data['stats']['focus_change_count'], 3)
+        self.assertEqual(response.data['stats']['focus_amount_delta'], '32000.00')
+        self.assertEqual(response.data['default_focus_version_id'], str(revision.id))
+        self.assertEqual(response.data['default_base_version_id'], str(self.version.id))
+
+        versions = {item['id']: item for item in response.data['versions']}
+        self.assertEqual(versions[str(self.version.id)]['label'], 'V1')
+        self.assertEqual(versions[str(self.version.id)]['depth'], 0)
+        self.assertIsNone(versions[str(self.version.id)]['change_summary'])
+        self.assertEqual(versions[str(revision.id)]['label'], 'Draft')
+        self.assertEqual(versions[str(revision.id)]['depth'], 1)
+        self.assertEqual(versions[str(revision.id)]['base_version_id'], str(self.version.id))
+        self.assertEqual(versions[str(revision.id)]['change_summary']['total_changes'], 3)
+        self.assertEqual(versions[str(revision.id)]['change_amount_delta'], '32000.00')
+
+        heatmap_columns = response.data['heatmap']['columns']
+        self.assertEqual(len(heatmap_columns), 1)
+        self.assertEqual(heatmap_columns[0]['version_id'], str(revision.id))
+        self.assertEqual(heatmap_columns[0]['total_changes'], 3)
+        self.assertEqual(heatmap_columns[0]['amount_delta'], '32000.00')
+
+        heatmap_rows = {row['key']: row for row in response.data['heatmap']['rows']}
+        self.assertEqual(heatmap_rows['added_lines']['cells'][0]['count'], 1)
+        self.assertEqual(heatmap_rows['added_lines']['cells'][0]['amount_delta'], '7000.00')
+        self.assertEqual(heatmap_rows['deleted_lines']['cells'][0]['count'], 1)
+        self.assertEqual(heatmap_rows['deleted_lines']['cells'][0]['amount_delta'], '-5000.00')
+        self.assertEqual(heatmap_rows['description']['cells'][0]['count'], 1)
+        self.assertEqual(heatmap_rows['description']['cells'][0]['amount_delta'], '0.00')
+        self.assertEqual(heatmap_rows['total_amount']['cells'][0]['count'], 1)
+        self.assertEqual(heatmap_rows['total_amount']['cells'][0]['amount_delta'], '30000.00')
+        self.assertEqual(heatmap_rows['month_1']['cells'][0]['count'], 1)
+        self.assertEqual(heatmap_rows['month_1']['cells'][0]['amount_delta'], '30000.00')
+
     def test_cannot_create_revision_when_current_draft_exists(self):
         self.client.force_authenticate(self.requester)
 

@@ -71,7 +71,7 @@ localStorage.setItem('budget_basic_auth', btoa('primary-admin:password'))
 - 主数据：支持 Category、Project Category、Product Line、Project、Vendor、Region、Cost Center、GL Account 维护，并支持历史名称、别名和启停控制。
 - 模板管理：支持 schema 修订、复制上一周期模板，以及字段的宽度、冻结列、Dashboard 标签、审批快照、导入别名和下拉来源维护；下拉来源通过 `/api/option-sources/` 统一注册和暴露。
 - 专题需求：支持按模板创建填写任务、结构化填报、部门提交、一级确认、预算同步，以及变更后的重新打开和重同步。
-- 版本分析：版本链路和 Diff。
+- 版本分析：支持按预算表查看真实版本链、修订来源、迭代统计、修改热力图和 Diff 明细。
 
 ## Testing Guide
 
@@ -92,7 +92,7 @@ npm run build
 
 ### 当前测试基线
 
-- `manage.py test`：128 通过
+- `manage.py test`：129 通过
 - `manage.py test demands`：10 通过
 - `manage.py test budget_cycles budgets`：53 通过
 - `manage.py test approvals budgets budget_cycles notifications`：60 通过
@@ -106,7 +106,7 @@ npm run build
 - `manage.py test masterdata budget_templates budgets`：78 通过
 - `manage.py test masterdata`：6 通过
 - `manage.py test analytics`：19 通过
-- `manage.py test budgets`：48 通过
+- `manage.py test budgets analytics approvals`：70 通过
 - 后端 check：通过
 - 前端构建：通过
 

@@ -14,7 +14,6 @@ import type {
   ApiBudgetTask,
   ApiBudgetOverview,
   ApiBudgetTemplate,
-  ApiBudgetVersion,
   ApiCategory,
   ApiCostCenter,
   ApiGLAccount,
@@ -26,6 +25,7 @@ import type {
   ApiPrimarySyncStatus,
   ApiTemplateField,
   ApiUser,
+  ApiVersionAnalysis,
   ApiNamedMasterData,
   ApiProject,
   ApiPurchaseHistory,
@@ -99,6 +99,10 @@ export const useWorkbenchStore = defineStore('workbench', {
     },
     revisionSourceBookId: '',
     versionDiff: null as ApiVersionDiff | null,
+    versionAnalysis: null as ApiVersionAnalysis | null,
+    versionAnalysisBookId: '',
+    versionAnalysisBaseVersionId: '',
+    versionAnalysisTargetVersionId: '',
     budgetOverview: null as ApiBudgetOverview | null,
     dashboardExpenseType: '' as '' | 'opex' | 'capex',
     dashboardDrilldown: null as ApiDashboardDrilldown | null,
@@ -118,6 +122,7 @@ export const useWorkbenchStore = defineStore('workbench', {
     importJobErrors: null as ApiImportJobErrors | null,
     notifications: [] as ApiNotification[],
     users: [] as ApiUser[],
+    budgetBooks: [] as ApiBudgetBook[],
     notificationSummary: {
       total: 0,
       unread_count: 0,
@@ -242,6 +247,7 @@ export const useWorkbenchStore = defineStore('workbench', {
           projectNames[item.id] = item.name
         })
 
+        this.budgetBooks = books.results
         this.tasks = tasks.results.map((task) => ({
           id: task.id,
           cycleId: task.cycle,
@@ -561,15 +567,60 @@ export const useWorkbenchStore = defineStore('workbench', {
       this.loading = true
       this.error = ''
       try {
-        const versions = await apiGet<PaginatedResponse<ApiBudgetVersion>>('/budget-versions/')
-        const target = versions.results.find((version) => version.base_version)
-        if (!target) {
+        if (!this.departments.length) {
+          await this.loadDepartments()
+        }
+        const books = await apiGet<PaginatedResponse<ApiBudgetBook>>('/budget-books/')
+        this.budgetBooks = books.results
+        const targetBook =
+          books.results.find((book) => book.current_draft && book.latest_approved_version) ??
+          books.results.find((book) => book.current_draft || book.latest_approved_version)
+        if (!targetBook) {
+          this.versionAnalysis = null
           this.versionDiff = null
           return
         }
-        this.versionDiff = await apiGet<ApiVersionDiff>(`/budget-versions/${target.id}/diff/`)
+        this.versionAnalysisBookId = targetBook.id
+        await this.loadVersionAnalysis(targetBook.id)
       } catch (error) {
         this.error = error instanceof Error ? error.message : '加载版本差异失败'
+      } finally {
+        this.loading = false
+      }
+    },
+    async loadVersionAnalysis(bookId?: string, targetVersionId?: string, baseVersionId?: string) {
+      const resolvedBookId = bookId ?? this.versionAnalysisBookId
+      if (!resolvedBookId) {
+        this.versionAnalysis = null
+        this.versionDiff = null
+        this.versionAnalysisBaseVersionId = ''
+        this.versionAnalysisTargetVersionId = ''
+        return
+      }
+      this.loading = true
+      this.error = ''
+      try {
+        this.versionAnalysisBookId = resolvedBookId
+        const analysis = await apiGet<ApiVersionAnalysis>(`/budget-books/${resolvedBookId}/version-analysis/`)
+        this.versionAnalysis = analysis
+        const resolvedTargetVersionId = targetVersionId || analysis.default_focus_version_id || ''
+        const version =
+          analysis.versions.find((item) => item.id === resolvedTargetVersionId) ??
+          analysis.versions.find((item) => item.base_version_id)
+        if (!version || !version.base_version_id) {
+          this.versionAnalysisTargetVersionId = ''
+          this.versionAnalysisBaseVersionId = ''
+          this.versionDiff = null
+          return
+        }
+        const resolvedBaseVersionId = baseVersionId || version.base_version_id
+        this.versionAnalysisTargetVersionId = version.id
+        this.versionAnalysisBaseVersionId = resolvedBaseVersionId
+        this.versionDiff = await apiGet<ApiVersionDiff>(
+          `/budget-versions/${version.id}/diff/?base_version=${resolvedBaseVersionId}`,
+        )
+      } catch (error) {
+        this.error = error instanceof Error ? error.message : '加载版本分析失败'
       } finally {
         this.loading = false
       }

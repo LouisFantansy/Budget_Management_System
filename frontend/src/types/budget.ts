@@ -245,6 +245,93 @@ export interface ApiVersionDiff {
   }>
 }
 
+export interface ApiVersionAnalysisVersion {
+  id: string
+  label: string
+  status: 'draft' | 'submitted' | 'approved' | 'rejected' | 'final'
+  status_label: string
+  version_no: number
+  base_version_id: string | null
+  base_version_label: string | null
+  depth: number
+  created_at: string
+  submitted_at: string | null
+  approved_at: string | null
+  notes: string
+  line_count: number
+  total_amount: string
+  is_current_draft: boolean
+  is_latest_approved: boolean
+  child_count: number
+  change_summary: ApiVersionDiff['summary'] | null
+  change_amount_delta: string
+}
+
+export interface ApiVersionAnalysisHeatmapCell {
+  version_id: string
+  count: number
+  amount_delta: string
+}
+
+export interface ApiVersionAnalysisHeatmapRow {
+  key: string
+  label: string
+  scope: 'summary' | 'field' | 'month'
+  total: number
+  cells: ApiVersionAnalysisHeatmapCell[]
+}
+
+export interface ApiVersionAnalysis {
+  book: {
+    id: string
+    cycle_id: string
+    cycle_name: string
+    department_id: string
+    department_name: string
+    expense_type: 'opex' | 'capex'
+    expense_type_label: string
+    source_type: string
+    source_type_label: string
+    status: string
+    status_label: string
+    template_id: string
+    template_name: string
+    current_draft_id: string | null
+    latest_approved_version_id: string | null
+  }
+  stats: {
+    total_versions: number
+    revision_rounds: number
+    approved_versions: number
+    draft_versions: number
+    submitted_versions: number
+    rejected_versions: number
+    final_versions: number
+    branch_roots: number
+    branch_heads: number
+    max_depth: number
+    iteration_span_days: number
+    focus_change_count: number
+    focus_amount_delta: string
+  }
+  versions: ApiVersionAnalysisVersion[]
+  heatmap: {
+    columns: Array<{
+      version_id: string
+      label: string
+      status: string
+      status_label: string
+      base_version_id: string
+      base_version_label: string
+      total_changes: number
+      amount_delta: string
+    }>
+    rows: ApiVersionAnalysisHeatmapRow[]
+  }
+  default_focus_version_id: string | null
+  default_base_version_id: string | null
+}
+
 export interface ApiBudgetOverview {
   version_context: DashboardVersionContext
   expense_type: '' | 'opex' | 'capex'

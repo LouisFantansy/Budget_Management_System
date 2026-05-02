@@ -4,6 +4,7 @@ from rest_framework import decorators, response, viewsets
 from rest_framework.exceptions import ValidationError
 
 from accounts.access import accessible_department_ids, can_edit_department_budget, is_global_budget_user
+from .analysis import build_version_analysis
 from .diff import compare_versions
 from .import_export import (
     export_budget_version_csv,
@@ -74,6 +75,11 @@ class BudgetBookViewSet(viewsets.ModelViewSet):
     def sync_status(self, request, pk=None):
         book = self.get_object()
         return response.Response(primary_consolidated_sync_status(book))
+
+    @decorators.action(detail=True, methods=['get'], url_path='version-analysis')
+    def version_analysis(self, request, pk=None):
+        book = self.get_object()
+        return response.Response(build_version_analysis(book))
 
 
 class BudgetVersionViewSet(viewsets.ModelViewSet):
